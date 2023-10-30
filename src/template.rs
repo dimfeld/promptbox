@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::model::ModelOptions;
+use crate::model::ModelOptionsInput;
 
 #[derive(Deserialize, Debug)]
 pub struct PromptOption {
@@ -14,7 +14,7 @@ pub struct PromptOption {
 pub struct PromptTemplate {
     pub name: String,
     pub decription: String,
-    pub model: ModelOptions,
+    pub model: ModelOptionsInput,
 
     #[serde(default)]
     pub options: Vec<PromptOption>,
