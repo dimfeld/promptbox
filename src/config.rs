@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use error_stack::{Report, ResultExt};
 use serde::Deserialize;
@@ -8,17 +8,27 @@ use crate::{
     model::{ModelOptions, ModelOptionsInput},
 };
 
+fn default_templates_dir() -> Vec<PathBuf> {
+    vec![PathBuf::from(".")]
+}
+
 #[derive(Deserialize, Debug, Default)]
 pub struct ConfigInput {
-    #[serde(default)]
-    pub templates: Vec<String>,
+    /// Directories in which to look for templates.
+    #[serde(default = "default_templates_dir")]
+    pub templates: Vec<PathBuf>,
     /// Default model options to use for any prompts that don't override them.
     pub model: Option<ModelOptionsInput>,
+    /// Stop recursing through parent directories if a config file is found with `top_level = true`
+    #[serde(default)]
+    pub top_level: bool,
+    /// Do not use the global config if this is `false`.
+    pub use_global_config: Option<bool>,
 }
 
 #[derive(Debug, Default)]
 pub struct Config {
-    pub templates: Vec<String>,
+    pub templates: Vec<PathBuf>,
     pub model: ModelOptions,
 }
 
@@ -27,30 +37,29 @@ impl Config {
     pub fn from_directory(start_dir: PathBuf) -> Result<Self, Report<Error>> {
         let mut config = ConfigInput::default();
 
-        let mut current_dir = start_dir.clone();
+        let mut current_dir = start_dir;
         loop {
-            let config_path = current_dir.join("movableprompt.toml");
-            if let Ok(c) = std::fs::read_to_string(&config_path) {
-                let new_config: ConfigInput = toml::from_str(&c)
-                    .change_context(Error::ParseConfig)
-                    .attach_printable_lazy(|| config_path.display().to_string())?;
+            if let Some(new_config) = ConfigInput::from_dir(&current_dir)? {
                 config.merge(new_config);
             }
 
-            if !current_dir.pop() {
+            if config.top_level || !current_dir.pop() {
                 break;
             }
         }
 
-        let global_config = dirs::config_dir()
-            .unwrap()
-            .join("movableprompt")
-            .join("movableprompt.toml");
-        if let Ok(c) = std::fs::read_to_string(&global_config) {
-            let new_config: ConfigInput = toml::from_str(&c)
-                .change_context(Error::ParseConfig)
-                .attach_printable_lazy(|| global_config.display().to_string())?;
-            config.merge(new_config);
+        if config.use_global_config.unwrap_or(true) {
+            let global_config_paths = [
+                dirs::config_dir(),
+                dirs::home_dir().map(|p| p.join(".config")),
+            ];
+
+            for global_config_dir in global_config_paths.into_iter().flatten() {
+                let global_config = global_config_dir.join("movableprompt");
+                if let Some(new_config) = ConfigInput::from_dir(&global_config)? {
+                    config.merge(new_config);
+                }
+            }
         }
 
         Ok(Self {
@@ -61,6 +70,29 @@ impl Config {
 }
 
 impl ConfigInput {
+    fn from_dir(dir: &Path) -> Result<Option<Self>, Report<Error>> {
+        let config_path = dir.join("movableprompt.toml");
+        let Ok(contents) = std::fs::read_to_string(&config_path) else {
+            return Ok(None);
+        };
+
+        let mut new_config: ConfigInput = toml::from_str(&contents)
+            .change_context(Error::ParseConfig)
+            .attach_printable_lazy(|| config_path.display().to_string())?;
+        new_config.resolve_template_dirs(dir);
+        Ok(Some(new_config))
+    }
+
+    fn resolve_template_dirs(&mut self, base_dir: &Path) {
+        for template in self.templates.iter_mut() {
+            if template.is_relative() {
+                if let Ok(full_path) = std::fs::canonicalize(base_dir.join(&template)) {
+                    *template = full_path;
+                }
+            }
+        }
+    }
+
     fn merge(&mut self, other: ConfigInput) {
         self.templates.extend(other.templates);
 
