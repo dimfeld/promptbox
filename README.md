@@ -1,3 +1,4 @@
 # Movable Prompt
 
-This utility allows maintaining a library of LLM prompt templates
+This utility allows maintaining libraries of LLM prompt templates which can be filled in and submitted from the command
+line.

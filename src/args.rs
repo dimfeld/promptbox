@@ -8,7 +8,7 @@ use crate::{
 
 #[derive(Parser, Debug)]
 pub struct Args {
-    /// The name of the template to load
+    /// The name of the template to read
     pub template: String,
 
     /// Override the model used by the template

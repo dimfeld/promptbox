@@ -10,6 +10,7 @@ mod config;
 mod error;
 mod model;
 mod template;
+mod openai;
 
 fn main() -> Result<(), Report<Error>> {
     let config = Config::from_directory(std::env::current_dir().unwrap())?;
