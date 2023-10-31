@@ -6,6 +6,7 @@ use serde::Deserialize;
 use crate::{
     error::Error,
     model::{ModelOptions, ModelOptionsInput},
+    template::ParsedTemplate,
 };
 
 fn default_templates_dir() -> Vec<PathBuf> {
@@ -28,7 +29,7 @@ pub struct ConfigInput {
 
 #[derive(Debug, Default)]
 pub struct Config {
-    pub templates: Vec<PathBuf>,
+    pub template_dirs: Vec<PathBuf>,
     pub model: ModelOptions,
 }
 
@@ -63,9 +64,25 @@ impl Config {
         }
 
         Ok(Self {
-            templates: config.templates,
+            template_dirs: config.templates,
             model: ModelOptions::from(config.model.unwrap_or_default()),
         })
+    }
+
+    pub fn find_template(&self, name: &str) -> Result<ParsedTemplate, Report<Error>> {
+        for template_dir in &self.template_dirs {
+            for potential_suffix in ["mp.toml", "toml"] {
+                let template_path = template_dir.join(format!("{}.{}", name, potential_suffix));
+                match ParsedTemplate::from_file(&template_path) {
+                    Ok(Some(template)) => return Ok(template),
+                    // template was not found in this directory, but that's ok.
+                    Ok(None) => (),
+                    Err(error) => return Err(error),
+                }
+            }
+        }
+
+        Err(Report::from(Error::TemplateNotFound))
     }
 }
 
