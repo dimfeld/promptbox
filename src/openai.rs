@@ -1,13 +1,34 @@
+use serde::Deserialize;
 use serde_json::json;
 
 use crate::model::ModelOptions;
+
+#[derive(Debug, Deserialize)]
+struct ChatCompletionMessage {
+    role: String,
+    content: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatCompletionChoice {
+    finish_reason: String,
+    index: i32,
+    message: ChatCompletionMessage,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatCompletion {
+    id: String,
+    choices: Vec<ChatCompletionChoice>,
+    created: i64,
+    // usage: Usage,
+}
 
 pub fn send_chat_request(
     options: &ModelOptions,
     key: &str,
     prompt: &str,
-    tx: flume::Sender<String>,
-) {
+) -> Result<String, ureq::Error> {
     let body = json!({
         "model": options.model,
         "temperature": options.temperature,
@@ -26,15 +47,25 @@ pub fn send_chat_request(
     });
 
     let url = "https://api.openai.com/v1/chat/completions";
-    send_request(url, key, body, tx)
+
+    let mut response: ChatCompletion = ureq::post(url)
+        .set("Authorization", &format!("Bearer {}", key))
+        .send_json(body)?
+        .into_json()?;
+
+    Ok(response
+        .choices
+        .get_mut(0)
+        .map(|m| m.message.content.take().unwrap_or_default())
+        .unwrap_or_default())
 }
 
-pub fn send_instruct_request(
+pub fn send_completion_request(
     options: &ModelOptions,
     key: &str,
     prompt: &str,
-    tx: flume::Sender<String>,
-) {
+) -> Result<(), ureq::Error> {
+    unimplemented!("the send_request function does not handle this response yet");
     let body = json!({
         "model": options.model,
         "temperature": options.temperature,
@@ -49,11 +80,8 @@ pub fn send_instruct_request(
 
     let url = "https://api.openai.com/v1/completions";
 
-    send_request(url, key, body, tx)
-}
-
-fn send_request(url: &str, key: &str, body: serde_json::Value, tx: flume::Sender<String>) {
-    let response = ureq::post(url)
+    let response: serde_json::Value = ureq::post(url)
         .set("Authorization", &format!("Bearer {}", key))
-        .send_json(body);
+        .send_json(body)?
+        .into_json()?;
 }

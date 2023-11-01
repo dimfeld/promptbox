@@ -43,7 +43,7 @@ pub struct Args {
     // pub json: bool,
 }
 
-pub fn parse_template_args(template: &PromptTemplate) -> Result<tera::Context, Report<Error>> {
+pub fn parse_template_args(template: &PromptTemplate) -> Result<liquid::Object, Report<Error>> {
     let args = template
         .options
         .iter()
@@ -79,7 +79,7 @@ pub fn parse_template_args(template: &PromptTemplate) -> Result<tera::Context, R
         .try_get_matches()
         .change_context(Error::ArgParseFailure)?;
 
-    let mut context = tera::Context::new();
+    let mut context = liquid::Object::new();
     for option in &template.options {
         match option.option_type {
             OptionType::Bool => add_val_to_context::<bool>(&mut context, &mut parsed, option),
@@ -92,23 +92,28 @@ pub fn parse_template_args(template: &PromptTemplate) -> Result<tera::Context, R
     Ok(context)
 }
 
-fn add_val_to_context<T: Clone + Send + Sync + Into<tera::Value> + 'static>(
-    context: &mut tera::Context,
+fn add_val_to_context<
+    T: Clone + Send + Sync + Into<liquid::model::ScalarCow<'static>> + 'static,
+>(
+    context: &mut liquid::Object,
     args: &mut ArgMatches,
     option: &PromptOption,
 ) {
     let val = if option.array {
         if let Some(vals) = args.remove_many::<T>(&option.name) {
-            let vals = vals.into_iter().map(|val| val.into()).collect();
-            tera::Value::Array(vals)
+            let vals = vals
+                .into_iter()
+                .map(|val| liquid::model::Value::scalar(val))
+                .collect();
+            liquid::model::Value::Array(vals)
         } else {
-            tera::Value::Array(vec![])
+            liquid::model::Value::Array(vec![])
         }
     } else {
         args.remove_one::<T>(&option.name)
-            .map(|val| val.into())
-            .unwrap_or_default()
+            .map(|val| liquid::model::Value::scalar(val))
+            .unwrap_or(liquid::model::Value::Nil)
     };
 
-    context.insert(option.name.clone(), &val);
+    context.insert(option.name.clone().into(), val);
 }

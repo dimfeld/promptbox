@@ -61,9 +61,9 @@ impl ParsedTemplate {
         // At some point we should support partials here, but it still needs some design since we
         // want to allow templates to reference partials in upper directories. For now, we just
         // do a String.
-        let template_result = if let Some(t) = prompt_template.template.take() {
+        let (template_path, template_result) = if let Some(t) = prompt_template.template.take() {
             // Template is embedded in the file
-            t
+            (path.to_path_buf(), t)
         } else {
             // Load it from the specified path
             let relative_template_path = prompt_template
@@ -78,12 +78,12 @@ impl ParsedTemplate {
             let template_contents = std::fs::read_to_string(&template_path)
                 .change_context(Error::TemplateContentsNotFound)
                 .attach_printable_lazy(|| template_path.display().to_string())?;
-            template_contents
+            (template_path, template_contents)
         };
 
         Ok(Some(ParsedTemplate {
             input: prompt_template,
-            path: path.to_path_buf(),
+            path: template_path,
             template: template_result,
         }))
     }

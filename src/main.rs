@@ -3,14 +3,15 @@ use clap::Parser;
 use config::Config;
 use error::Error;
 use error_stack::{Report, ResultExt};
+use liquid::partials::{InMemorySource, LazyCompiler};
 use template::ParsedTemplate;
 
 mod args;
 mod config;
 mod error;
 mod model;
-mod template;
 mod openai;
+mod template;
 
 fn main() -> Result<(), Report<Error>> {
     let config = Config::from_directory(std::env::current_dir().unwrap())?;
@@ -31,7 +32,20 @@ fn main() -> Result<(), Report<Error>> {
         (None, None) => template,
     };
 
-    let result = tera::Tera::one_off(&template, &template_context, false)
+    // TODO replace InMemorySource with a custom source that can look for partials in the various
+    // config directories.
+    let parser = liquid::ParserBuilder::<LazyCompiler<InMemorySource>>::default()
+        .stdlib()
+        .build()
+        .expect("failed to build parser");
+
+    let parsed = parser
+        .parse(&template)
+        .change_context(Error::ParseTemplate)
+        .attach_printable_lazy(|| template_path.display().to_string())?;
+
+    let result = parsed
+        .render(&template_context)
         .change_context(Error::ParseTemplate)
         .attach_printable_lazy(|| template_path.display().to_string())?;
 
