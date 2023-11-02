@@ -9,22 +9,23 @@ use crate::{
     template::ParsedTemplate,
 };
 
-fn default_templates_dir() -> Vec<PathBuf> {
+fn default_template_dirs() -> Vec<PathBuf> {
     vec![PathBuf::from(".")]
 }
 
 #[derive(Deserialize, Debug, Default)]
 pub struct ConfigInput {
-    /// Directories in which to look for templates.
-    #[serde(default = "default_templates_dir")]
+    /// One or more globs that define where to look for templates.
+    /// Defaults to ./promptbox, or ./ if the config file is in ./promptbox
+    #[serde(default = "default_template_dirs")]
     pub templates: Vec<PathBuf>,
-    /// Default model options to use for any prompts that don't override them.
-    pub model: Option<ModelOptionsInput>,
     /// Stop recursing through parent directories if a config file is found with `top_level = true`
     #[serde(default)]
     pub top_level: bool,
     /// Do not use the global config if this is `false`.
     pub use_global_config: Option<bool>,
+    /// Default model options to use for any prompts that don't override them.
+    pub model: Option<ModelOptionsInput>,
 }
 
 #[derive(Debug, Default)]
@@ -71,14 +72,12 @@ impl Config {
 
     pub fn find_template(&self, name: &str) -> Result<ParsedTemplate, Report<Error>> {
         for template_dir in &self.template_dirs {
-            for potential_suffix in ["mp.toml", "toml"] {
-                let template_path = template_dir.join(format!("{}.{}", name, potential_suffix));
-                match ParsedTemplate::from_file(&template_path) {
-                    Ok(Some(template)) => return Ok(template),
-                    // template was not found in this directory, but that's ok.
-                    Ok(None) => (),
-                    Err(error) => return Err(error),
-                }
+            let template_path = template_dir.join(format!("{}.pb.toml", name));
+            match ParsedTemplate::from_file(name, &template_path) {
+                Ok(Some(template)) => return Ok(template),
+                // template was not found in this directory, but that's ok.
+                Ok(None) => (),
+                Err(error) => return Err(error),
             }
         }
 
@@ -88,15 +87,24 @@ impl Config {
 
 impl ConfigInput {
     fn from_dir(dir: &Path) -> Result<Option<Self>, Report<Error>> {
-        let config_path = dir.join("promptbox.toml");
-        let Ok(contents) = std::fs::read_to_string(&config_path) else {
+        let mut config_iter = ["promptbox.toml", "promptbox/promptbox.toml"]
+            .into_iter()
+            .filter_map(|p| {
+                let config_path = dir.join(p);
+                let contents = std::fs::read_to_string(&config_path).ok()?;
+                Some((config_path, contents))
+            });
+
+        let Some((config_path, contents)) = config_iter.next() else {
             return Ok(None);
         };
 
         let mut new_config: ConfigInput = toml::from_str(&contents)
             .change_context(Error::ParseConfig)
             .attach_printable_lazy(|| config_path.display().to_string())?;
-        new_config.resolve_template_dirs(dir);
+
+        let base_dir = config_path.parent().expect("path had no directory");
+        new_config.resolve_template_dirs(base_dir);
         Ok(Some(new_config))
     }
 
