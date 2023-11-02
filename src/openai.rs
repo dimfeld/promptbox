@@ -37,7 +37,7 @@ pub fn send_chat_request(
         "frequency_penalty": options.frequency_penalty,
         "presence_penalty": options.presence_penalty,
         "stop": options.stop,
-        "user": "movableprompt",
+        "user": "promptbox",
         "messages": [
             {
                 "role": "user",
@@ -74,7 +74,7 @@ pub fn send_completion_request(
         "frequency_penalty": options.frequency_penalty,
         "presence_penalty": options.presence_penalty,
         "stop": options.stop,
-        "user": "movableprompt",
+        "user": "promptbox",
         "prompt": prompt
     });
 

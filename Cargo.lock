@@ -637,25 +637,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "movableprompt"
-version = "0.1.0"
-dependencies = [
- "clap",
- "dirs",
- "dotenvy",
- "error-stack",
- "flume",
- "liquid",
- "rusqlite",
- "rusqlite_migration",
- "serde",
- "serde_json",
- "thiserror",
- "toml",
- "ureq",
-]
-
-[[package]]
 name = "nanorand"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -755,6 +736,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "134c189feb4956b20f6f547d2cf727d4c0fe06722b20a0eec87ed445a97f92da"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "promptbox"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "dirs",
+ "dotenvy",
+ "error-stack",
+ "flume",
+ "liquid",
+ "rusqlite",
+ "rusqlite_migration",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "toml",
+ "ureq",
 ]
 
 [[package]]

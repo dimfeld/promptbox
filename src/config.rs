@@ -56,7 +56,7 @@ impl Config {
             ];
 
             for global_config_dir in global_config_paths.into_iter().flatten() {
-                let global_config = global_config_dir.join("movableprompt");
+                let global_config = global_config_dir.join("promptbox");
                 if let Some(new_config) = ConfigInput::from_dir(&global_config)? {
                     config.merge(new_config);
                 }
@@ -88,7 +88,7 @@ impl Config {
 
 impl ConfigInput {
     fn from_dir(dir: &Path) -> Result<Option<Self>, Report<Error>> {
-        let config_path = dir.join("movableprompt.toml");
+        let config_path = dir.join("promptbox.toml");
         let Ok(contents) = std::fs::read_to_string(&config_path) else {
             return Ok(None);
         };
