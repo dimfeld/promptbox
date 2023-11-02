@@ -1,0 +1,35 @@
+
+template = '''
+This is a template.
+
+{{ stringopt }} {{ numopt }} {{ intopt }}
+Single File {{fileopt.filename}}: {{ fileopt.contents }}
+{% for file in arrayfileopt %}
+  {{ file.filename }}: {{ file.contents }}
+{% endfor %}
+{{ defaultvalue }}
+{{% if optional -%}}
+  {{ optional }}
+{%- endif %}
+'''
+
+[options]
+defaulttypeopt = {}
+stringopt = { type = "string" }
+numopt = { type = "number" }
+intopt = { type = "integer" }
+fileopt = { type = "file" }
+arrayfileopt = { type = "file", array = true }
+
+[options.arrayopt]
+description = "this is an array"
+array = true
+
+[options.defaultvalue]
+type = "number"
+default = 10
+
+[options.optional]
+optional = true
+
+

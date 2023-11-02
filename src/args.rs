@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{ffi::OsString, path::PathBuf};
 
 use clap::{Arg, ArgAction, ArgMatches, Command, Parser};
 use error_stack::{Report, ResultExt};
@@ -8,7 +8,7 @@ use crate::{
     template::{OptionType, PromptOption, PromptTemplate},
 };
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Default)]
 pub struct Args {
     /// The name of the template to read
     pub template: String,
@@ -45,7 +45,10 @@ pub struct Args {
     // pub json: bool,
 }
 
-pub fn parse_template_args(template: &PromptTemplate) -> Result<liquid::Object, Report<Error>> {
+pub fn parse_template_args(
+    cmdline: impl IntoIterator<Item = impl Into<OsString> + Clone>,
+    template: &PromptTemplate,
+) -> Result<liquid::Object, Report<Error>> {
     let args = template
         .options
         .iter()
@@ -61,7 +64,7 @@ pub fn parse_template_args(template: &PromptTemplate) -> Result<liquid::Object, 
 
             let arg = Arg::new(name.to_string())
                 .long(name.to_string())
-                .required(!option.optional)
+                .required(option.default.is_none() && !option.optional)
                 .action(action);
 
             let arg = match option.option_type {
@@ -74,13 +77,13 @@ pub fn parse_template_args(template: &PromptTemplate) -> Result<liquid::Object, 
                 OptionType::File => arg.value_parser(clap::value_parser!(PathBuf)),
             };
 
-            arg
+            Ok(arg)
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, Report<Error>>>()?;
 
     let mut parsed = Command::new("template")
         .args(args)
-        .try_get_matches()
+        .try_get_matches_from(cmdline)
         .change_context(Error::ArgParseFailure)?;
 
     let mut context = liquid::Object::new();
@@ -101,27 +104,14 @@ pub fn parse_template_args(template: &PromptTemplate) -> Result<liquid::Object, 
                     let vals = parsed.remove_many::<PathBuf>(&name).unwrap_or_default();
                     let values = vals
                         .into_iter()
-                        .map(|val| {
-                            let contents =
-                                std::fs::read_to_string(&val).attach_printable_lazy(|| {
-                                    format!("Could not read file: {}", val.display().to_string())
-                                })?;
-
-                            Ok::<_, Report<std::io::Error>>(liquid::model::Value::scalar(contents))
-                        })
+                        .map(create_file_object)
                         .collect::<Result<Vec<_>, _>>()
                         .change_context(Error::ArgParseFailure)?;
                     context.insert(name.into(), liquid::model::Value::Array(values));
                 } else {
                     let val = parsed
                         .remove_one::<PathBuf>(name)
-                        .map(|val| {
-                            std::fs::read_to_string(&val)
-                                .attach_printable_lazy(|| {
-                                    format!("Could not read file: {}", val.display().to_string())
-                                })
-                                .map(liquid::model::Value::scalar)
-                        })
+                        .map(create_file_object)
                         .transpose()
                         .change_context(Error::ArgParseFailure)?;
                     context.insert(name.into(), val.unwrap_or(liquid::model::Value::Nil));
@@ -131,6 +121,19 @@ pub fn parse_template_args(template: &PromptTemplate) -> Result<liquid::Object, 
     }
 
     Ok(context)
+}
+
+fn create_file_object(path: PathBuf) -> Result<liquid::model::Value, Report<std::io::Error>> {
+    let contents = std::fs::read_to_string(&path)
+        .attach_printable_lazy(|| format!("Could not read file: {}", path.display()))?;
+
+    let obj = liquid::object!({
+        "filename": path.file_name(),
+        "path": path.to_string_lossy().to_owned(),
+        "contents": contents
+    });
+
+    Ok(liquid::model::Value::Object(obj))
 }
 
 fn add_val_to_context<
@@ -149,13 +152,17 @@ fn add_val_to_context<
                 .collect();
             liquid::model::Value::Array(vals)
         } else {
-            liquid::model::Value::Array(vec![])
+            option
+                .default
+                .clone()
+                .unwrap_or_else(|| liquid::model::Value::array(vec![]))
         }
     } else {
-        args.remove_one::<T>(&option.name)
+        args.remove_one::<T>(name)
             .map(liquid::model::Value::scalar)
+            .or_else(|| option.default.clone())
             .unwrap_or(liquid::model::Value::Nil)
     };
 
-    context.insert(option.name.clone().into(), val);
+    context.insert(name.to_string().into(), val);
 }

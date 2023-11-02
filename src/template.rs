@@ -21,12 +21,16 @@ pub enum OptionType {
 
 #[derive(Deserialize, Debug)]
 pub struct PromptOption {
-    pub name: String,
+    #[serde(default)]
     pub description: String,
     #[serde(default)]
     pub array: bool,
     #[serde(rename = "type", default)]
     pub option_type: OptionType,
+    /// If this option is omitted, use this default value instead.
+    /// Options without a default value and without `optional` are required.
+    pub default: Option<liquid::model::Value>,
+    /// Set `optional` true to allow omitting the option without providing a default value
     #[serde(default)]
     pub optional: bool,
 }

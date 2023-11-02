@@ -1,0 +1,7 @@
+templates = ["."]
+top_level = true
+use_global_config = false
+
+[model]
+model = "gpt-3.5-turbo"
+temperature = 0.4
