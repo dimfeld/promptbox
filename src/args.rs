@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::{Arg, ArgAction, ArgMatches, Command, Parser};
 use error_stack::{Report, ResultExt};
 
@@ -47,18 +49,19 @@ pub fn parse_template_args(template: &PromptTemplate) -> Result<liquid::Object, 
     let args = template
         .options
         .iter()
-        .map(|option| {
+        .map(|(name, option)| {
             let action = match (option.array, option.option_type) {
                 (true, _) => ArgAction::Append,
                 (false, OptionType::String) => ArgAction::Set,
                 (false, OptionType::Number) => ArgAction::Set,
                 (false, OptionType::Integer) => ArgAction::Set,
+                (false, OptionType::File) => ArgAction::Set,
                 (false, OptionType::Bool) => ArgAction::SetTrue,
             };
 
-            let arg = Arg::new(option.name.clone())
-                .long(option.name.clone())
-                .required(option.required)
+            let arg = Arg::new(name.to_string())
+                .long(name.to_string())
+                .required(!option.optional)
                 .action(action);
 
             let arg = match option.option_type {
@@ -68,6 +71,7 @@ pub fn parse_template_args(template: &PromptTemplate) -> Result<liquid::Object, 
                 OptionType::Number => arg.value_parser(clap::value_parser!(f32)),
                 OptionType::Integer => arg.value_parser(clap::value_parser!(i64)),
                 OptionType::Bool => arg.value_parser(clap::value_parser!(bool)),
+                OptionType::File => arg.value_parser(clap::value_parser!(PathBuf)),
             };
 
             arg
@@ -80,12 +84,49 @@ pub fn parse_template_args(template: &PromptTemplate) -> Result<liquid::Object, 
         .change_context(Error::ArgParseFailure)?;
 
     let mut context = liquid::Object::new();
-    for option in &template.options {
+    for (name, option) in &template.options {
         match option.option_type {
-            OptionType::Bool => add_val_to_context::<bool>(&mut context, &mut parsed, option),
-            OptionType::Number => add_val_to_context::<f32>(&mut context, &mut parsed, option),
-            OptionType::Integer => add_val_to_context::<i64>(&mut context, &mut parsed, option),
-            OptionType::String => add_val_to_context::<String>(&mut context, &mut parsed, option),
+            OptionType::Bool => add_val_to_context::<bool>(&mut context, &mut parsed, name, option),
+            OptionType::Number => {
+                add_val_to_context::<f32>(&mut context, &mut parsed, name, option)
+            }
+            OptionType::Integer => {
+                add_val_to_context::<i64>(&mut context, &mut parsed, name, option)
+            }
+            OptionType::String => {
+                add_val_to_context::<String>(&mut context, &mut parsed, name, option)
+            }
+            OptionType::File => {
+                if option.array {
+                    let vals = parsed.remove_many::<PathBuf>(&name).unwrap_or_default();
+                    let values = vals
+                        .into_iter()
+                        .map(|val| {
+                            let contents =
+                                std::fs::read_to_string(&val).attach_printable_lazy(|| {
+                                    format!("Could not read file: {}", val.display().to_string())
+                                })?;
+
+                            Ok::<_, Report<std::io::Error>>(liquid::model::Value::scalar(contents))
+                        })
+                        .collect::<Result<Vec<_>, _>>()
+                        .change_context(Error::ArgParseFailure)?;
+                    context.insert(name.into(), liquid::model::Value::Array(values));
+                } else {
+                    let val = parsed
+                        .remove_one::<PathBuf>(name)
+                        .map(|val| {
+                            std::fs::read_to_string(&val)
+                                .attach_printable_lazy(|| {
+                                    format!("Could not read file: {}", val.display().to_string())
+                                })
+                                .map(liquid::model::Value::scalar)
+                        })
+                        .transpose()
+                        .change_context(Error::ArgParseFailure)?;
+                    context.insert(name.into(), val.unwrap_or(liquid::model::Value::Nil));
+                }
+            }
         }
     }
 
@@ -97,10 +138,11 @@ fn add_val_to_context<
 >(
     context: &mut liquid::Object,
     args: &mut ArgMatches,
+    name: &str,
     option: &PromptOption,
 ) {
     let val = if option.array {
-        if let Some(vals) = args.remove_many::<T>(&option.name) {
+        if let Some(vals) = args.remove_many::<T>(name) {
             let vals = vals
                 .into_iter()
                 .map(|val| liquid::model::Value::scalar(val))
@@ -111,7 +153,7 @@ fn add_val_to_context<
         }
     } else {
         args.remove_one::<T>(&option.name)
-            .map(|val| liquid::model::Value::scalar(val))
+            .map(liquid::model::Value::scalar)
             .unwrap_or(liquid::model::Value::Nil)
     };
 

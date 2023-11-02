@@ -21,6 +21,7 @@ fn main() -> Result<(), Report<Error>> {
         template,
         path: template_path,
         input,
+        ..
     } = config.find_template(&args.template)?;
 
     let template_context = parse_template_args(&input)?;

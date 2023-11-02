@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use error_stack::{Report, ResultExt};
 use serde::Deserialize;
@@ -13,6 +16,7 @@ pub enum OptionType {
     Number,
     Integer,
     Bool,
+    File,
 }
 
 #[derive(Deserialize, Debug)]
@@ -24,17 +28,18 @@ pub struct PromptOption {
     #[serde(rename = "type", default)]
     pub option_type: OptionType,
     #[serde(default)]
-    pub required: bool,
+    pub optional: bool,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct PromptTemplate {
-    pub name: String,
+    #[serde(default)]
     pub description: String,
+    #[serde(default)]
     pub model: ModelOptionsInput,
 
     #[serde(default)]
-    pub options: Vec<PromptOption>,
+    pub options: HashMap<String, PromptOption>,
 
     pub template: Option<String>,
     pub template_path: Option<PathBuf>,
@@ -42,6 +47,7 @@ pub struct PromptTemplate {
 
 #[derive(Debug)]
 pub struct ParsedTemplate {
+    pub name: String,
     pub input: PromptTemplate,
     pub path: PathBuf,
     pub template: String,
@@ -49,7 +55,7 @@ pub struct ParsedTemplate {
 
 impl ParsedTemplate {
     /// Try to load a template from a file. If the file does not exist, returns `Ok(None)`.
-    pub fn from_file(path: &Path) -> Result<Option<Self>, Report<Error>> {
+    pub fn from_file(name: &str, path: &Path) -> Result<Option<Self>, Report<Error>> {
         let Ok(contents) = std::fs::read_to_string(path) else {
             return Ok(None);
         };
@@ -82,6 +88,7 @@ impl ParsedTemplate {
         };
 
         Ok(Some(ParsedTemplate {
+            name: name.to_string(),
             input: prompt_template,
             path: template_path,
             template: template_result,
