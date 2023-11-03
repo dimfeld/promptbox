@@ -1,7 +1,6 @@
 use std::{ffi::OsString, path::PathBuf};
 
-use args::{parse_template_args, Args};
-use clap::Parser;
+use args::{parse_main_args, parse_template_args, FoundCommand, GlobalRunArgs};
 use config::Config;
 use error::Error;
 use error_stack::{Report, ResultExt};
@@ -14,24 +13,22 @@ mod error;
 mod model;
 mod openai;
 mod template;
-#[cfg(test)]
-mod tests;
 
 fn generate_template(
-    args: &Args,
     base_dir: PathBuf,
-    cmdline: impl IntoIterator<Item = impl Into<OsString> + Clone>,
-) -> Result<String, Report<Error>> {
-    let config = Config::from_directory(base_dir)?;
+    template: String,
+    cmdline: Vec<OsString>,
+) -> Result<(GlobalRunArgs, String), Report<Error>> {
+    let config = Config::from_directory(base_dir.clone())?;
 
     let ParsedTemplate {
         template,
         path: template_path,
         input,
         ..
-    } = config.find_template(&args.template)?;
+    } = config.find_template(&template)?;
 
-    let template_context = parse_template_args(cmdline, &input)?;
+    let (args, template_context) = parse_template_args(cmdline, &base_dir, &input)?;
 
     let template = match (args.prepend.as_ref(), args.append.as_ref()) {
         (Some(pre), Some(post)) => format!("{pre}\n\n{template}\n\n{post}"),
@@ -52,18 +49,23 @@ fn generate_template(
         .change_context(Error::ParseTemplate)
         .attach_printable_lazy(|| template_path.display().to_string())?;
 
-    parsed
+    let prompt = parsed
         .render(&template_context)
         .change_context(Error::ParseTemplate)
-        .attach_printable_lazy(|| template_path.display().to_string())
+        .attach_printable_lazy(|| template_path.display().to_string())?;
+
+    Ok((args, prompt))
 }
 
-fn run(base_dir: PathBuf, cmdline: impl Fn() -> std::env::Args) -> Result<(), Report<Error>> {
-    let args = Args::parse_from(cmdline());
-    let template = generate_template(&args, base_dir, cmdline())?;
+fn run_template(
+    base_dir: PathBuf,
+    template: String,
+    args: Vec<OsString>,
+) -> Result<(), Report<Error>> {
+    let (args, prompt) = generate_template(base_dir, template, args)?;
 
     if args.print_prompt || args.verbose || args.dry_run {
-        println!("{}", template);
+        println!("{}", prompt);
     }
 
     if args.dry_run {
@@ -75,6 +77,22 @@ fn run(base_dir: PathBuf, cmdline: impl Fn() -> std::env::Args) -> Result<(), Re
     Ok(())
 }
 
+fn run(base_dir: PathBuf, cmdline: Vec<OsString>) -> Result<(), Report<Error>> {
+    let args = parse_main_args(cmdline).change_context(Error::ArgParseFailure)?;
+
+    match args {
+        FoundCommand::Run { template, args } => run_template(base_dir, template, args)?,
+        FoundCommand::Other(cli) => {
+            todo!()
+        }
+    }
+
+    Ok(())
+}
+
 fn main() -> Result<(), Report<Error>> {
-    run(std::env::current_dir().unwrap(), std::env::args)
+    run(
+        std::env::current_dir().unwrap(),
+        std::env::args().into_iter().map(OsString::from).collect(),
+    )
 }

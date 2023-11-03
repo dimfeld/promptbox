@@ -136,3 +136,27 @@ pub fn merge_option<T: Clone>(a: &mut Option<T>, b: &Option<T>) {
         *a = b.clone();
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    #[ignore]
+    fn resolve_hierarchy() {}
+
+    #[test]
+    #[ignore]
+    fn config_in_subdir() {}
+
+    #[test]
+    #[ignore]
+    fn intermediate_without_config() {}
+
+    #[test]
+    #[ignore]
+    fn malformed() {}
+
+    #[test]
+    #[ignore]
+    fn stop_at_toplevel_setting() {}
+}

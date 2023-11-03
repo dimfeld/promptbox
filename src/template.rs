@@ -15,6 +15,7 @@ pub enum OptionType {
     String,
     Number,
     Integer,
+    #[serde(alias = "boolean")]
     Bool,
     File,
 }
@@ -97,5 +98,95 @@ impl ParsedTemplate {
             path: template_path,
             template: template_result,
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{ffi::OsString, path::PathBuf};
+
+    use crate::generate_template;
+
+    const BASE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/test_data");
+
+    fn to_cmdline_vec(args: Vec<impl Into<OsString>>) -> Vec<OsString> {
+        args.into_iter()
+            .map(|arg| arg.into())
+            .collect::<Vec<OsString>>()
+    }
+
+    #[test]
+    fn normal() {
+        let cmdline = to_cmdline_vec(vec![
+            "test",
+            "run",
+            "normal",
+            "--defaulttypeopt",
+            "defvalue",
+            "--defaultvalue",
+            "5",
+            "--stringopt",
+            "stringvalue",
+            "--numopt",
+            "5.23",
+            "--intopt",
+            "6",
+            "--boolopt",
+            "--fileopt",
+            "test1.txt",
+            "--arrayopt",
+            "array",
+            "--arrayopt",
+            "arrayb",
+            "--arrayfileopt",
+            "test1.txt",
+            "--arrayfileopt",
+            "test2.txt",
+            "--optional",
+            "optvalue",
+        ]);
+
+        let (args, prompt) =
+            generate_template(PathBuf::from(BASE_DIR), "normal".to_string(), cmdline)
+                .expect("generate_template");
+        println!("{prompt}");
+    }
+
+    #[test]
+    #[ignore]
+    fn malformed_template() {}
+
+    #[test]
+    #[ignore]
+    fn override_template() {}
+
+    #[test]
+    #[ignore]
+    fn template_at_path() {}
+
+    mod args {
+        #[test]
+        #[ignore]
+        fn nonexistent_file() {}
+
+        #[test]
+        #[ignore]
+        fn omit_optional() {}
+
+        #[test]
+        #[ignore]
+        fn config_in_subdir() {}
+
+        #[test]
+        #[ignore]
+        fn bad_int() {}
+
+        #[test]
+        #[ignore]
+        fn bad_float() {}
+
+        #[test]
+        #[ignore]
+        fn omit_required_option() {}
     }
 }

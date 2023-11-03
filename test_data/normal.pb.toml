@@ -4,11 +4,11 @@ This is a template.
 
 {{ stringopt }} {{ numopt }} {{ intopt }}
 Single File {{fileopt.filename}}: {{ fileopt.contents }}
-{% for file in arrayfileopt %}
+{%- for file in arrayfileopt -%}
   {{ file.filename }}: {{ file.contents }}
-{% endfor %}
+{%- endfor -%}
 {{ defaultvalue }}
-{{% if optional -%}}
+{% if optional -%}
   {{ optional }}
 {%- endif %}
 '''
@@ -18,6 +18,7 @@ defaulttypeopt = {}
 stringopt = { type = "string" }
 numopt = { type = "number" }
 intopt = { type = "integer" }
+boolopt = { type = "boolean" }
 fileopt = { type = "file" }
 arrayfileopt = { type = "file", array = true }
 

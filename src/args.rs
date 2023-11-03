@@ -1,6 +1,11 @@
-use std::{ffi::OsString, path::PathBuf};
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+};
 
-use clap::{Arg, ArgAction, ArgMatches, Command, Parser};
+use clap::{
+    Arg, ArgAction, ArgMatches, Args, Command, CommandFactory, FromArgMatches, Parser, Subcommand,
+};
 use error_stack::{Report, ResultExt};
 
 use crate::{
@@ -8,9 +13,22 @@ use crate::{
     template::{OptionType, PromptOption, PromptTemplate},
 };
 
+#[derive(Parser, Debug)]
+pub struct Cli {
+    #[command(subcommand)]
+    command: MainCommand,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum MainCommand {
+    Run(GlobalRunArgs),
+    // List
+    // Show
+}
+
 #[derive(Parser, Debug, Default)]
-pub struct Args {
-    /// The name of the template to read
+pub struct GlobalRunArgs {
+    /// The template to run
     pub template: String,
 
     /// Override the model used by the template
@@ -45,10 +63,44 @@ pub struct Args {
     // pub json: bool,
 }
 
+pub enum FoundCommand {
+    Run {
+        template: String,
+        args: Vec<OsString>,
+    },
+    Other(Cli),
+}
+
+pub fn parse_main_args(cmdline: Vec<OsString>) -> Result<FoundCommand, clap::Error> {
+    let first_arg = cmdline
+        .get(1)
+        .map(|s| s.to_string_lossy())
+        .unwrap_or_default();
+    let second_arg = cmdline
+        .get(2)
+        .map(|s| s.to_string_lossy())
+        .unwrap_or_default();
+    if cmdline.len() >= 3
+        && first_arg == "run"
+        && !second_arg.is_empty()
+        && !second_arg.starts_with("-")
+    {
+        // This isn't great since it hardcodes looking for a specific format. Probably better to
+        // use a real parse with TrailingArgs.
+        Ok(FoundCommand::Run {
+            template: second_arg.to_string(),
+            args: cmdline,
+        })
+    } else {
+        Cli::try_parse_from(cmdline).map(FoundCommand::Other)
+    }
+}
+
 pub fn parse_template_args(
-    cmdline: impl IntoIterator<Item = impl Into<OsString> + Clone>,
+    cmdline: Vec<OsString>,
+    base_dir: &Path,
     template: &PromptTemplate,
-) -> Result<liquid::Object, Report<Error>> {
+) -> Result<(GlobalRunArgs, liquid::Object), Report<Error>> {
     let args = template
         .options
         .iter()
@@ -81,10 +133,20 @@ pub fn parse_template_args(
         })
         .collect::<Result<Vec<_>, Report<Error>>>()?;
 
-    let mut parsed = Command::new("template")
-        .args(args)
+    // Merge together the args from the global run options and from the template.
+    let run_command = Command::new("run")
+        .args(GlobalRunArgs::command().get_arguments())
+        .args(args);
+
+    let main_parsed = Command::new("promptbox")
+        .subcommand(run_command)
         .try_get_matches_from(cmdline)
         .change_context(Error::ArgParseFailure)?;
+
+    let mut parsed = main_parsed
+        .subcommand_matches("run")
+        .cloned()
+        .ok_or(Error::ArgParseFailure)?;
 
     let mut context = liquid::Object::new();
     for (name, option) in &template.options {
@@ -104,14 +166,14 @@ pub fn parse_template_args(
                     let vals = parsed.remove_many::<PathBuf>(&name).unwrap_or_default();
                     let values = vals
                         .into_iter()
-                        .map(create_file_object)
+                        .map(|path| create_file_object(base_dir, &path))
                         .collect::<Result<Vec<_>, _>>()
                         .change_context(Error::ArgParseFailure)?;
                     context.insert(name.into(), liquid::model::Value::Array(values));
                 } else {
                     let val = parsed
                         .remove_one::<PathBuf>(name)
-                        .map(create_file_object)
+                        .map(|path| create_file_object(base_dir, &path))
                         .transpose()
                         .change_context(Error::ArgParseFailure)?;
                     context.insert(name.into(), val.unwrap_or(liquid::model::Value::Nil));
@@ -120,15 +182,21 @@ pub fn parse_template_args(
         }
     }
 
-    Ok(context)
+    let global_args =
+        GlobalRunArgs::from_arg_matches_mut(&mut parsed).change_context(Error::ArgParseFailure)?;
+
+    Ok((global_args, context))
 }
 
-fn create_file_object(path: PathBuf) -> Result<liquid::model::Value, Report<std::io::Error>> {
-    let contents = std::fs::read_to_string(&path)
+fn create_file_object(
+    base_dir: &Path,
+    path: &Path,
+) -> Result<liquid::model::Value, Report<std::io::Error>> {
+    let contents = std::fs::read_to_string(base_dir.join(path).canonicalize()?)
         .attach_printable_lazy(|| format!("Could not read file: {}", path.display()))?;
 
     let obj = liquid::object!({
-        "filename": path.file_name(),
+        "filename": path.file_name().map(|s| s.to_string_lossy()).unwrap_or_default(),
         "path": path.to_string_lossy().to_owned(),
         "contents": contents
     });
