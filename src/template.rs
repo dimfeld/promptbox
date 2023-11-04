@@ -103,11 +103,19 @@ impl ParsedTemplate {
 
 #[cfg(test)]
 mod tests {
-    use std::{ffi::OsString, path::PathBuf};
+    use std::{
+        ffi::OsString,
+        panic::Location,
+        path::{Path, PathBuf},
+    };
 
     use crate::generate_template;
 
     const BASE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/test_data");
+
+    fn base_dir(subpath: impl AsRef<Path>) -> PathBuf {
+        PathBuf::from(BASE_DIR).join(subpath)
+    }
 
     fn to_cmdline_vec(args: Vec<impl Into<OsString>>) -> Vec<OsString> {
         args.into_iter()
@@ -128,7 +136,7 @@ mod tests {
             "--stringopt",
             "stringvalue",
             "--numopt",
-            "5.23",
+            "5.5",
             "--intopt",
             "6",
             "--boolopt",
@@ -146,15 +154,36 @@ mod tests {
             "optvalue",
         ]);
 
-        let (args, prompt) =
+        let (args, options, prompt) =
             generate_template(PathBuf::from(BASE_DIR), "normal".to_string(), cmdline)
                 .expect("generate_template");
-        println!("{prompt}");
+        assert_eq!(
+            prompt,
+            r##"This is a template.
+
+stringvalue 5.5 6
+Single File test1.txt: test1
+test1.txt: test1
+test2.txt: it's test2
+5
+optvalue
+"##
+        );
     }
 
     #[test]
-    #[ignore]
-    fn malformed_template() {}
+    fn malformed_template() {
+        let cmdline = to_cmdline_vec(vec!["test", "run", "malformed_template"]);
+
+        let result = generate_template(
+            base_dir("malformed_template"),
+            "malformed_template".to_string(),
+            cmdline,
+        );
+        error_stack::Report::install_debug_hook::<Location>(|_, _| {});
+        let err = result.expect_err("aa");
+        println!("{err:#?}");
+    }
 
     #[test]
     #[ignore]

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::config::merge_option;
+use crate::{args::GlobalRunArgs, config::merge_option};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ModelOptions {
@@ -27,6 +27,19 @@ impl Default for ModelOptions {
             stop: Vec::new(),
             max_tokens: None,
         }
+    }
+}
+
+impl ModelOptions {
+    pub fn update_from_args(&mut self, args: &GlobalRunArgs) {
+        merge_args_option(&mut self.model, &args.model);
+        merge_args_option(&mut self.temperature, &args.temperature);
+    }
+}
+
+fn merge_args_option<T: Clone>(self_value: &mut T, other_value: &Option<T>) {
+    if let Some(value) = other_value.as_ref() {
+        *self_value = value.clone();
     }
 }
 
