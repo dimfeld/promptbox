@@ -25,6 +25,7 @@ arrayfileopt = { type = "file", array = true }
 [options.arrayopt]
 description = "this is an array"
 array = true
+optional = true
 
 [options.defaultvalue]
 type = "number"

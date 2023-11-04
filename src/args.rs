@@ -116,7 +116,11 @@ pub fn parse_template_args(
 
             let arg = Arg::new(name.to_string())
                 .long(name.to_string())
-                .required(option.default.is_none() && !option.optional)
+                .required(
+                    option.option_type != OptionType::Bool
+                        && option.default.is_none()
+                        && !option.optional,
+                )
                 .action(action);
 
             let arg = match option.option_type {

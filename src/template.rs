@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use crate::{error::Error, model::ModelOptionsInput};
 
-#[derive(Deserialize, Debug, Default, Copy, Clone)]
+#[derive(Deserialize, Debug, Default, Copy, Clone, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum OptionType {
     #[default]
@@ -109,7 +109,7 @@ mod tests {
         path::{Path, PathBuf},
     };
 
-    use crate::generate_template;
+    use crate::{error::Error, generate_template};
 
     const BASE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/test_data");
 
@@ -180,42 +180,246 @@ optvalue
             "malformed_template".to_string(),
             cmdline,
         );
-        error_stack::Report::install_debug_hook::<Location>(|_, _| {});
-        let err = result.expect_err("aa");
+        let err = result.expect_err("should have been an error");
         println!("{err:#?}");
+        assert!(matches!(err.current_context(), Error::ParseTemplate));
     }
 
     #[test]
-    #[ignore]
-    fn override_template() {}
+    fn override_template() {
+        let cmdline = to_cmdline_vec(vec!["test", "run", "tmp"]);
+
+        let (_, _, prompt) = generate_template(
+            base_dir("override_template/override"),
+            "tmp".to_string(),
+            cmdline,
+        )
+        .expect("generate_template");
+
+        assert_eq!(prompt, "overridden");
+    }
 
     #[test]
-    #[ignore]
-    fn template_at_path() {}
+    fn template_at_path() {
+        let cmdline = to_cmdline_vec(vec!["test", "run", "subdir_without_config/indir"]);
+
+        let (_, _, prompt) = generate_template(
+            PathBuf::from(BASE_DIR),
+            "subdir_without_config/indir".to_string(),
+            cmdline,
+        )
+        .expect("generate_template");
+
+        assert_eq!(prompt, "the subdir");
+    }
+
+    #[test]
+    fn nonexistent_file() {
+        let cmdline = to_cmdline_vec(vec!["test", "run", "nonexistent_file"]);
+        let err = generate_template(
+            PathBuf::from(BASE_DIR),
+            "nonexistent_file".to_string(),
+            cmdline,
+        )
+        .expect_err("generate_template");
+
+        assert!(matches!(err.current_context(), Error::TemplateNotFound));
+    }
+
+    #[test]
+    fn template_path_missing() {
+        let cmdline = to_cmdline_vec(vec!["test", "run", "missing_template_path"]);
+        let err = generate_template(
+            PathBuf::from(BASE_DIR),
+            "missing_template_path".to_string(),
+            cmdline,
+        )
+        .expect_err("generate_template");
+
+        assert!(matches!(
+            err.current_context(),
+            Error::TemplateContentsNotFound
+        ));
+    }
 
     mod args {
+        use super::*;
+
         #[test]
-        #[ignore]
-        fn nonexistent_file() {}
+        fn omit_optional() {
+            let cmdline = to_cmdline_vec(vec![
+                "test",
+                "run",
+                "normal",
+                "--defaulttypeopt",
+                "defvalue",
+                "--stringopt",
+                "stringvalue",
+                "--numopt",
+                "5.5",
+                "--intopt",
+                "6",
+                "--fileopt",
+                "test1.txt",
+                "--arrayfileopt",
+                "test1.txt",
+            ]);
+
+            let (_, _, prompt) =
+                generate_template(PathBuf::from(BASE_DIR), "normal".to_string(), cmdline)
+                    .expect("generate_template");
+            assert_eq!(
+                prompt,
+                r##"This is a template.
+
+stringvalue 5.5 6
+Single File test1.txt: test1
+test1.txt: test1
+10
+
+"##
+            );
+        }
+
+        #[test]
+        fn bad_int() {
+            let cmdline = to_cmdline_vec(vec![
+                "test",
+                "run",
+                "normal",
+                "--defaulttypeopt",
+                "defvalue",
+                "--defaultvalue",
+                "5",
+                "--stringopt",
+                "stringvalue",
+                "--numopt",
+                "5.5",
+                "--intopt",
+                "6.5",
+                "--boolopt",
+                "--fileopt",
+                "test1.txt",
+                "--arrayopt",
+                "array",
+                "--arrayopt",
+                "arrayb",
+                "--arrayfileopt",
+                "test1.txt",
+                "--arrayfileopt",
+                "test2.txt",
+                "--optional",
+                "optvalue",
+            ]);
+
+            let result = generate_template(base_dir("normal"), "normal".to_string(), cmdline);
+            let err = result.expect_err("should have been an error");
+            println!("{err:#?}");
+            assert!(matches!(err.current_context(), Error::ArgParseFailure));
+        }
+
+        #[test]
+        fn bad_float() {
+            let cmdline = to_cmdline_vec(vec![
+                "test",
+                "run",
+                "normal",
+                "--defaulttypeopt",
+                "defvalue",
+                "--defaultvalue",
+                "5",
+                "--stringopt",
+                "stringvalue",
+                "--numopt",
+                "abc",
+                "--intopt",
+                "6",
+                "--boolopt",
+                "--fileopt",
+                "test1.txt",
+                "--arrayopt",
+                "array",
+                "--arrayopt",
+                "arrayb",
+                "--arrayfileopt",
+                "test1.txt",
+                "--arrayfileopt",
+                "test2.txt",
+                "--optional",
+                "optvalue",
+            ]);
+
+            let result = generate_template(base_dir("normal"), "normal".to_string(), cmdline);
+            let err = result.expect_err("should have been an error");
+            println!("{err:#?}");
+            assert!(matches!(err.current_context(), Error::ArgParseFailure));
+        }
 
         #[test]
         #[ignore]
-        fn omit_optional() {}
+        fn omit_required_option() {
+            let cmdline = to_cmdline_vec(vec![
+                "test",
+                "run",
+                "normal",
+                "--defaulttypeopt",
+                "defvalue",
+                "--defaultvalue",
+                "5",
+                "--stringopt",
+                "stringvalue",
+                "--numopt",
+                "5.5",
+                "--boolopt",
+                "--fileopt",
+                "test1.txt",
+                "--arrayopt",
+                "array",
+                "--arrayopt",
+                "arrayb",
+                "--arrayfileopt",
+                "test1.txt",
+                "--arrayfileopt",
+                "test2.txt",
+                "--optional",
+                "optvalue",
+            ]);
+
+            let result = generate_template(base_dir("normal"), "normal".to_string(), cmdline);
+            let err = result.expect_err("should have been an error");
+            println!("{err:#?}");
+            assert!(matches!(err.current_context(), Error::ArgParseFailure));
+        }
 
         #[test]
-        #[ignore]
-        fn config_in_subdir() {}
+        fn omit_required_array_option() {
+            let cmdline = to_cmdline_vec(vec![
+                "test",
+                "run",
+                "normal",
+                "--defaulttypeopt",
+                "defvalue",
+                "--defaultvalue",
+                "5",
+                "--stringopt",
+                "stringvalue",
+                "--numopt",
+                "5.5",
+                "--boolopt",
+                "--fileopt",
+                "test1.txt",
+                "--arrayopt",
+                "array",
+                "--arrayopt",
+                "arrayb",
+                "--optional",
+                "optvalue",
+            ]);
 
-        #[test]
-        #[ignore]
-        fn bad_int() {}
-
-        #[test]
-        #[ignore]
-        fn bad_float() {}
-
-        #[test]
-        #[ignore]
-        fn omit_required_option() {}
+            let result = generate_template(base_dir("normal"), "normal".to_string(), cmdline);
+            let err = result.expect_err("should have been an error");
+            println!("{err:#?}");
+            assert!(matches!(err.current_context(), Error::ArgParseFailure));
+        }
     }
 }
