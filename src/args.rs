@@ -31,8 +31,16 @@ pub struct GlobalRunArgs {
     /// The template to run
     pub template: String,
 
+    /// Local Host emulating OpenAI API (e.g. LM Studio)
+    #[arg(long, env = "LOCAL_OPENAI_HOST")]
+    pub local_openai_host: Option<String>,
+
+    /// OpenAI Key
+    #[arg(long, env = "OPENAI_KEY")]
+    pub openai_key: Option<String>,
+
     /// Override the model used by the template
-    #[arg(long, short = 'm')]
+    #[arg(long, short = 'm', env = "MODEL")]
     pub model: Option<String>,
 
     /// Override the temperature value passed to the model

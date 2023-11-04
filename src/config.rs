@@ -5,6 +5,7 @@ use serde::Deserialize;
 
 use crate::{
     error::Error,
+    global_config::global_config_dirs,
     model::{ModelOptions, ModelOptionsInput},
     template::ParsedTemplate,
 };
@@ -51,14 +52,8 @@ impl Config {
         }
 
         if config.use_global_config.unwrap_or(true) {
-            let global_config_paths = [
-                dirs::config_dir(),
-                dirs::home_dir().map(|p| p.join(".config")),
-            ];
-
-            for global_config_dir in global_config_paths.into_iter().flatten() {
-                let global_config = global_config_dir.join("promptbox");
-                if let Some(new_config) = ConfigInput::from_dir(&global_config)? {
+            for global_config_dir in global_config_dirs() {
+                if let Some(new_config) = ConfigInput::from_dir(&global_config_dir)? {
                     config.merge(new_config);
                 }
             }
@@ -128,12 +123,6 @@ impl ConfigInput {
                 self.model = Some(other_model);
             }
         }
-    }
-}
-
-pub fn merge_option<T: Clone>(a: &mut Option<T>, b: &Option<T>) {
-    if a.is_none() && b.is_some() {
-        *a = b.clone();
     }
 }
 

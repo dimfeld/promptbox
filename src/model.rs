@@ -1,10 +1,15 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{args::GlobalRunArgs, config::merge_option};
+use crate::{
+    args::GlobalRunArgs,
+    option::{overwrite_from_option, overwrite_option_from_option, update_if_none},
+};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ModelOptions {
     pub model: String,
+    pub local_openai_host: Option<String>,
+    pub openai_key: Option<String>,
     pub temperature: f32,
     pub top_p: Option<f32>,
     pub frequency_penalty: Option<f32>,
@@ -20,6 +25,8 @@ impl Default for ModelOptions {
     fn default() -> Self {
         Self {
             model: DEFAULT_MODEL.to_string(),
+            local_openai_host: None,
+            openai_key: None,
             temperature: DEFAULT_TEMPERATURE,
             top_p: None,
             frequency_penalty: None,
@@ -32,14 +39,12 @@ impl Default for ModelOptions {
 
 impl ModelOptions {
     pub fn update_from_args(&mut self, args: &GlobalRunArgs) {
-        merge_args_option(&mut self.model, &args.model);
-        merge_args_option(&mut self.temperature, &args.temperature);
-    }
-}
+        overwrite_from_option(&mut self.model, &args.model);
+        overwrite_option_from_option(&mut self.local_openai_host, &args.local_openai_host);
+        overwrite_from_option(&mut self.temperature, &args.temperature);
 
-fn merge_args_option<T: Clone>(self_value: &mut T, other_value: &Option<T>) {
-    if let Some(value) = other_value.as_ref() {
-        *self_value = value.clone();
+        // Always overwrite this since there's no other way to set the key.
+        self.openai_key = args.openai_key.clone();
     }
 }
 
@@ -47,6 +52,9 @@ impl From<ModelOptionsInput> for ModelOptions {
     fn from(value: ModelOptionsInput) -> Self {
         Self {
             model: value.model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
+            // For security, don't allow setting openAI key in normal config or template files.
+            openai_key: None,
+            local_openai_host: value.local_openai_host,
             temperature: value.temperature.unwrap_or(DEFAULT_TEMPERATURE),
             top_p: value.top_p,
             frequency_penalty: value.frequency_penalty,
@@ -60,6 +68,7 @@ impl From<ModelOptionsInput> for ModelOptions {
 #[derive(Deserialize, Debug, Default, Clone)]
 pub struct ModelOptionsInput {
     pub model: Option<String>,
+    pub local_openai_host: Option<String>,
     pub temperature: Option<f32>,
     pub top_p: Option<f32>,
     pub frequency_penalty: Option<f32>,
@@ -71,12 +80,13 @@ pub struct ModelOptionsInput {
 impl ModelOptionsInput {
     /// For any members that are `None` in this `ModelOptions`, use the value from `other`
     pub fn merge_defaults(&mut self, other: &ModelOptionsInput) {
-        merge_option(&mut self.model, &other.model);
-        merge_option(&mut self.temperature, &other.temperature);
-        merge_option(&mut self.top_p, &other.top_p);
-        merge_option(&mut self.frequency_penalty, &other.frequency_penalty);
-        merge_option(&mut self.presence_penalty, &other.presence_penalty);
-        merge_option(&mut self.stop, &other.stop);
-        merge_option(&mut self.max_tokens, &other.max_tokens);
+        update_if_none(&mut self.model, &other.model);
+        update_if_none(&mut self.local_openai_host, &other.local_openai_host);
+        update_if_none(&mut self.temperature, &other.temperature);
+        update_if_none(&mut self.top_p, &other.top_p);
+        update_if_none(&mut self.frequency_penalty, &other.frequency_penalty);
+        update_if_none(&mut self.presence_penalty, &other.presence_penalty);
+        update_if_none(&mut self.stop, &other.stop);
+        update_if_none(&mut self.max_tokens, &other.max_tokens);
     }
 }

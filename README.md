@@ -19,9 +19,9 @@ template = '''
 Create a {% if formal %}formal{% else %}informal{% endif %} summary of the below files
 which are on the topic of {{topic}}. The summary should be about {{ len }} sentences long.
 
-{%- for file in files -%}
-File {{ file.filename }}:
-{{ file.contents }}
+{%- for f in file -%}
+File {{ f.filename }}:
+{{ f.contents }}
 
 
 {%- endfor -%}

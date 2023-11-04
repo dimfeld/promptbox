@@ -14,6 +14,7 @@ pub enum OptionType {
     #[default]
     String,
     Number,
+    #[serde(alias = "int")]
     Integer,
     #[serde(alias = "boolean")]
     Bool,

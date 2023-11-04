@@ -4,15 +4,19 @@ use args::{parse_main_args, parse_template_args, FoundCommand, GlobalRunArgs};
 use config::Config;
 use error::Error;
 use error_stack::{Report, ResultExt};
+use global_config::load_dotenv;
 use liquid::partials::{InMemorySource, LazyCompiler};
 use model::ModelOptions;
+use openai::send_chat_request;
 use template::ParsedTemplate;
 
 mod args;
 mod config;
 mod error;
+mod global_config;
 mod model;
 mod openai;
+mod option;
 mod template;
 
 fn generate_template(
@@ -69,14 +73,16 @@ fn run_template(
     let (args, model_options, prompt) = generate_template(base_dir, template, args)?;
 
     if args.print_prompt || args.verbose || args.dry_run {
-        println!("{}", prompt);
+        println!("{}\n\nResult:", prompt);
     }
 
     if args.dry_run {
         return Ok(());
     }
 
-    // TODO submit it to the model
+    let result = send_chat_request(&model_options, &prompt).change_context(Error::RunPrompt)?;
+
+    println!("{}", result);
 
     Ok(())
 }
@@ -95,6 +101,11 @@ fn run(base_dir: PathBuf, cmdline: Vec<OsString>) -> Result<(), Report<Error>> {
 }
 
 fn main() -> Result<(), Report<Error>> {
+    // Don't show file locations in normal mode
+    #[cfg(not(debug_assertions))]
+    error_stack::Report::install_debug_hook::<std::panic::Location>(|_, _| {});
+
+    load_dotenv();
     run(
         std::env::current_dir().unwrap(),
         std::env::args().into_iter().map(OsString::from).collect(),
