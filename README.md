@@ -42,20 +42,21 @@ file = { type = "file", array = true, description = "The files to summarize" }
 
 Then to run it:
 
-```shell
+```
 > promptbox run summarize --topic software --file README.md
-The README.md file provides an overview of the PromptBox utility, which is used for maintaining libraries of LLM prompt
-templates that can be filled in and submitted from the command line. It explains that template files are built in TOML
-and can use Liquid templating. The file also includes an example template for summarizing files on a specific topic, with
-options for length, formality, and the files to summarize. Additionally, it mentions the presence of configuration files
-that can set default model options and inherit settings from parent directories.
+The README.md file provides an overview of the PromptBox utility, which is used for maintaining libraries of
+LLM prompt templates that can be filled in and submitted from the command line. It explains that template files
+are built in TOML and can use Liquid templating. The file also includes an example template for summarizing files
+on a specific topic, with options for length, formality, and the files to summarize. Additionally, it mentions the
+presence of configuration files that can set default model options and inherit settings from parent directories.
 
 > promptbox run summarize --topic software --file README.md --style excited 
 Introducing PromptBox, a powerful utility for maintaining libraries of LLM prompt templates! With PromptBox, you can
-easily fill in and submit prompt templates from the command line. These template files, built in TOML, can utilize Liquid
-templating and reference templates in other files. They also define command-line arguments, including references to files.
-The excitement doesn't stop there! PromptBox even supports configuration files, allowing you to set default model options
-and inherit settings from parent directories. Get ready to revolutionize your software experience with PromptBox!
+easily fill in and submit prompt templates from the command line. These template files, built in TOML, can utilize
+Liquid templating and reference templates in other files. They also define command-line arguments, including references
+to files. The excitement doesn't stop there! PromptBox even supports configuration files, allowing you to set default
+model options and inherit settings from parent directories. Get ready to revolutionize your software experience
+with PromptBox!
 ```
 
 # Configuration Files
