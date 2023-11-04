@@ -16,15 +16,15 @@ description = "Summarize some files"
 
 # This can also be template_path to read from another file.
 template = '''
-Create a {% if formal %}formal{% else %}informal{% endif %} summary of the below files
+Create a {{style}} summary of the below files
 which are on the topic of {{topic}}. The summary should be about {{ len }} sentences long.
 
-{%- for f in file -%}
+{% for f in file -%}
 File {{ f.filename }}:
 {{ f.contents }}
 
 
-{%- endfor -%}
+{%- endfor %}
 '''
 
 [model]
@@ -36,12 +36,27 @@ temperature = 0.7
 [options]
 len = { type = "int", description = "The length of the summary", default = 4 }
 topic = { type = "string", description = "The topic of the summary" }
-formal = { type = "boolean" }
+style = { type = "string", default = "concise" }
 file = { type = "file", array = true, description = "The files to summarize" }
 ```
 
-This template could then be run with a command like `promptbox run summarize --formal --file cafe.txt --file bistro.txt --topic
-food`.
+Then to run it:
+
+```shell
+> promptbox run summarize --topic software --file README.md
+The README.md file provides an overview of the PromptBox utility, which is used for maintaining libraries of LLM prompt
+templates that can be filled in and submitted from the command line. It explains that template files are built in TOML
+and can use Liquid templating. The file also includes an example template for summarizing files on a specific topic, with
+options for length, formality, and the files to summarize. Additionally, it mentions the presence of configuration files
+that can set default model options and inherit settings from parent directories.
+
+> promptbox run summarize --topic software --file README.md --style excited 
+Introducing PromptBox, a powerful utility for maintaining libraries of LLM prompt templates! With PromptBox, you can
+easily fill in and submit prompt templates from the command line. These template files, built in TOML, can utilize Liquid
+templating and reference templates in other files. They also define command-line arguments, including references to files.
+The excitement doesn't stop there! PromptBox even supports configuration files, allowing you to set default model options
+and inherit settings from parent directories. Get ready to revolutionize your software experience with PromptBox!
+```
 
 # Configuration Files
 
@@ -51,3 +66,13 @@ from the current directory up through the parent directories, and the global con
 
 A configuration file inherits settings from the config files in its parent directories as well, for those options that
 it does not set itself.
+
+# Configuration Files
+
+Each directory of templates contains a configuration file, which can set default model options. Config files are read
+from the current directory up through the parent directories, and the global configuration directory such as
+`.config/promptbox/promptbox.toml` is read as well.
+
+A configuration file inherits settings from the config files in its parent directories as well, for those options that
+it does not set itself.
+
