@@ -133,6 +133,7 @@ pub fn parse_template_args(
                         && option.default.is_none()
                         && !option.optional,
                 )
+                .help(&option.description)
                 .action(action);
 
             let arg = match option.option_type {
