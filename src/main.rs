@@ -18,6 +18,8 @@ mod model;
 mod openai;
 mod option;
 mod template;
+#[cfg(test)]
+mod tests;
 
 fn generate_template(
     base_dir: PathBuf,

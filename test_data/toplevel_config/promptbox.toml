@@ -1,4 +1,5 @@
 top_level = true
+use_global_config = false
 
 [model]
 temperature =  1.2

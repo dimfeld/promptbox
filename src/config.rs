@@ -7,6 +7,7 @@ use crate::{
     error::Error,
     global_config::global_config_dirs,
     model::{ModelOptions, ModelOptionsInput},
+    option::overwrite_option_from_option,
     template::ParsedTemplate,
 };
 
@@ -43,10 +44,14 @@ impl Config {
         let mut current_dir = start_dir;
         loop {
             if let Some(new_config) = ConfigInput::from_dir(&current_dir)? {
+                let top_level = new_config.top_level;
                 config.merge(new_config);
+                if top_level {
+                    break;
+                }
             }
 
-            if config.top_level || !current_dir.pop() {
+            if !current_dir.pop() {
                 break;
             }
         }
@@ -81,6 +86,7 @@ impl Config {
 }
 
 impl ConfigInput {
+    /// Try to load a ConfigInput from a directory or the `promptbox` sudirectory.
     fn from_dir(dir: &Path) -> Result<Option<Self>, Report<Error>> {
         let mut config_iter = ["promptbox.toml", "promptbox/promptbox.toml"]
             .into_iter()
@@ -103,6 +109,7 @@ impl ConfigInput {
         Ok(Some(new_config))
     }
 
+    /// Convert the template directory references to absolute paths
     fn resolve_template_dirs(&mut self, base_dir: &Path) {
         for template in self.templates.iter_mut() {
             if template.is_relative() {
@@ -113,8 +120,11 @@ impl ConfigInput {
         }
     }
 
+    /// Merge in another ConfigInput, using only values which are not yet configured in `self`.
     fn merge(&mut self, other: ConfigInput) {
         self.templates.extend(other.templates);
+
+        overwrite_option_from_option(&mut self.use_global_config, &other.use_global_config);
 
         if let Some(other_model) = other.model {
             if let Some(model) = self.model.as_mut() {
@@ -128,24 +138,47 @@ impl ConfigInput {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::tests::{base_dir, BASE_DIR};
 
     #[test]
-    #[ignore]
-    fn resolve_hierarchy() {}
+    fn config_in_subdir() {
+        let config = Config::from_directory(base_dir("config_in_subdir")).expect("loading config");
+        let expected_dirs = vec![
+            base_dir("config_in_subdir/promptbox"),
+            PathBuf::from(BASE_DIR),
+        ];
+        assert_eq!(config.template_dirs, expected_dirs);
+    }
 
     #[test]
-    #[ignore]
-    fn config_in_subdir() {}
+    fn intermediate_without_config() {
+        let config =
+            Config::from_directory(base_dir("intermediate_without_config/leaf_dir_with_config"))
+                .expect("loading config");
+        let expected_dirs = vec![
+            base_dir("intermediate_without_config/leaf_dir_with_config"),
+            PathBuf::from(BASE_DIR),
+        ];
+        assert_eq!(config.template_dirs, expected_dirs);
+    }
 
     #[test]
-    #[ignore]
-    fn intermediate_without_config() {}
+    fn malformed() {
+        let err = Config::from_directory(base_dir("malformed_config"))
+            .expect_err("loading config should fail");
+        assert!(matches!(err.current_context(), Error::ParseConfig));
+    }
 
     #[test]
-    #[ignore]
-    fn malformed() {}
-
-    #[test]
-    #[ignore]
-    fn stop_at_toplevel_setting() {}
+    fn stop_at_toplevel_setting() {
+        let config = Config::from_directory(base_dir("toplevel_config")).expect("loading config");
+        let expected_dirs = vec![base_dir("toplevel_config")];
+        assert_eq!(config.template_dirs, expected_dirs);
+        assert_eq!(config.model.temperature, 1.2);
+        assert_eq!(
+            config.model.top_p, None,
+            "Should not read values from the parent directory"
+        );
+    }
 }

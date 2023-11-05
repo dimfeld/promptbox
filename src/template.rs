@@ -104,19 +104,13 @@ impl ParsedTemplate {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        ffi::OsString,
-        panic::Location,
-        path::{Path, PathBuf},
+    use std::{ffi::OsString, path::PathBuf};
+
+    use crate::{
+        error::Error,
+        generate_template,
+        tests::{base_dir, BASE_DIR},
     };
-
-    use crate::{error::Error, generate_template};
-
-    const BASE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/test_data");
-
-    fn base_dir(subpath: impl AsRef<Path>) -> PathBuf {
-        PathBuf::from(BASE_DIR).join(subpath)
-    }
 
     fn to_cmdline_vec(args: Vec<impl Into<OsString>>) -> Vec<OsString> {
         args.into_iter()
@@ -184,6 +178,17 @@ optvalue
         let err = result.expect_err("should have been an error");
         println!("{err:#?}");
         assert!(matches!(err.current_context(), Error::ParseTemplate));
+    }
+
+    #[test]
+    fn in_parent_dir() {
+        let cmdline = to_cmdline_vec(vec!["test", "run", "simple"]);
+
+        let (_, _, prompt) =
+            generate_template(base_dir("config_in_subdir"), "simple".to_string(), cmdline)
+                .expect("generate_template");
+
+        assert_eq!(prompt, "a simple prompt");
     }
 
     #[test]
@@ -357,7 +362,6 @@ test1.txt: test1
         }
 
         #[test]
-        #[ignore]
         fn omit_required_option() {
             let cmdline = to_cmdline_vec(vec![
                 "test",
@@ -406,6 +410,8 @@ test1.txt: test1
                 "stringvalue",
                 "--numopt",
                 "5.5",
+                "--intopt",
+                "6",
                 "--boolopt",
                 "--fileopt",
                 "test1.txt",
