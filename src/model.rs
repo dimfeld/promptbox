@@ -21,6 +21,7 @@ pub struct ModelOptions {
     pub ollama_host: Option<String>,
     pub openai_key: Option<String>,
     pub temperature: f32,
+    pub top_k: Option<u32>,
     pub top_p: Option<f32>,
     pub frequency_penalty: Option<f32>,
     pub presence_penalty: Option<f32>,
@@ -41,6 +42,7 @@ impl Default for ModelOptions {
             ollama_host: None,
             openai_key: None,
             temperature: DEFAULT_TEMPERATURE,
+            top_k: None,
             top_p: None,
             frequency_penalty: None,
             presence_penalty: None,
@@ -96,6 +98,7 @@ impl From<ModelOptionsInput> for ModelOptions {
             ollama_host: value.ollama_host,
             temperature: value.temperature.unwrap_or(DEFAULT_TEMPERATURE),
             top_p: value.top_p,
+            top_k: value.top_k,
             frequency_penalty: value.frequency_penalty,
             presence_penalty: value.presence_penalty,
             stop: value.stop.unwrap_or_default(),
@@ -112,6 +115,7 @@ pub struct ModelOptionsInput {
     pub ollama_host: Option<String>,
     pub temperature: Option<f32>,
     pub top_p: Option<f32>,
+    pub top_k: Option<u32>,
     pub frequency_penalty: Option<f32>,
     pub presence_penalty: Option<f32>,
     pub stop: Option<Vec<String>>,
@@ -129,6 +133,7 @@ impl ModelOptionsInput {
         update_if_none(&mut self.ollama_host, &other.ollama_host);
         update_if_none(&mut self.temperature, &other.temperature);
         update_if_none(&mut self.top_p, &other.top_p);
+        update_if_none(&mut self.top_k, &other.top_k);
         update_if_none(&mut self.frequency_penalty, &other.frequency_penalty);
         update_if_none(&mut self.presence_penalty, &other.presence_penalty);
         update_if_none(&mut self.stop, &other.stop);
