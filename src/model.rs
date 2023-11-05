@@ -70,7 +70,7 @@ impl ModelOptions {
 
     pub fn api_host(&self) -> (&str, ModelCommsModule) {
         let model = self.full_model_name();
-        if model.starts_with("gpt4") || model.starts_with("gpt-3.5-") {
+        if model.starts_with("gpt-4") || model.starts_with("gpt-3.5-") {
             (crate::openai::OPENAI_HOST, ModelCommsModule::OpenAi)
         } else if model == "lm-studio" {
             let host = self
