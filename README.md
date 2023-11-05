@@ -68,12 +68,3 @@ from the current directory up through the parent directories, and the global con
 A configuration file inherits settings from the config files in its parent directories as well, for those options that
 it does not set itself.
 
-# Configuration Files
-
-Each directory of templates contains a configuration file, which can set default model options. Config files are read
-from the current directory up through the parent directories, and the global configuration directory such as
-`.config/promptbox/promptbox.toml` is read as well.
-
-A configuration file inherits settings from the config files in its parent directories as well, for those options that
-it does not set itself.
-
