@@ -7,14 +7,16 @@ use error_stack::{Report, ResultExt};
 use global_config::load_dotenv;
 use liquid::partials::{InMemorySource, LazyCompiler};
 use model::ModelOptions;
-use openai::send_chat_request;
 use template::ParsedTemplate;
+
+use crate::model::send_model_request;
 
 mod args;
 mod config;
 mod error;
 mod global_config;
 mod model;
+mod ollama;
 mod openai;
 mod option;
 mod template;
@@ -82,7 +84,7 @@ fn run_template(
         return Ok(());
     }
 
-    let result = send_chat_request(&model_options, &prompt).change_context(Error::RunPrompt)?;
+    let result = send_model_request(&model_options, &prompt).change_context(Error::RunPrompt)?;
 
     println!("{}", result);
 

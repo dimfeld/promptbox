@@ -3,20 +3,9 @@ use serde::Deserialize;
 use serde_json::json;
 use thiserror::Error;
 
-use crate::model::ModelOptions;
+use crate::model::{handle_model_response, ModelError, ModelOptions};
 
-const OPENAI_HOST: &str = "https://api.openai.com";
-
-pub fn api_host(config: &ModelOptions) -> &str {
-    if config.model == "gpt4" || config.model.starts_with("gpt-3.5-") {
-        OPENAI_HOST
-    } else {
-        config
-            .local_openai_host
-            .as_deref()
-            .unwrap_or("http://localhost:1234")
-    }
-}
+pub const OPENAI_HOST: &str = "https://api.openai.com";
 
 #[derive(Debug, Deserialize)]
 struct ChatCompletionMessage {
@@ -39,18 +28,9 @@ struct ChatCompletion {
     // usage: Usage,
 }
 
-#[derive(Error, Debug)]
-pub enum OpenAiError {
-    #[error("Error communicating with model API")]
-    Raw,
-    #[error("Unexpected problem decoding API response")]
-    Deserialize,
-    #[error("Error {0} communicating with model API: {1}")]
-    OpenAi(u16, String),
-}
-
 fn create_base_request(config: &ModelOptions, path: &str) -> ureq::Request {
-    let url = format!("{host}/{path}", host = api_host(config));
+    let (host, _) = config.api_host();
+    let url = format!("{host}/{path}");
 
     let request = ureq::post(&url);
     if let Some(key) = config.openai_key.as_ref() {
@@ -63,9 +43,9 @@ fn create_base_request(config: &ModelOptions, path: &str) -> ureq::Request {
 pub fn send_chat_request(
     options: &ModelOptions,
     prompt: &str,
-) -> Result<String, Report<OpenAiError>> {
+) -> Result<String, Report<ModelError>> {
     let mut body = json!({
-        "model": options.model,
+        "model": options.full_model_name(),
         "temperature": options.temperature,
         "user": "promptbox",
         "messages": [
@@ -96,17 +76,9 @@ pub fn send_chat_request(
         body["max_tokens"] = json!(max_tokens);
     }
 
-    let mut response: ChatCompletion = create_base_request(&options, "v1/chat/completions")
-        .send_json(body)
-        .map_err(|e| match e {
-            e @ ureq::Error::Transport(_) => Report::new(e).change_context(OpenAiError::Raw),
-            ureq::Error::Status(code, response) => {
-                let message = response.into_string().unwrap();
-                Report::new(OpenAiError::OpenAi(code, message))
-            }
-        })?
-        .into_json()
-        .change_context(OpenAiError::Deserialize)?;
+    let mut response: ChatCompletion = handle_model_response(
+        create_base_request(&options, "v1/chat/completions").send_json(body),
+    )?;
 
     Ok(response
         .choices
@@ -118,7 +90,7 @@ pub fn send_chat_request(
 pub fn send_completion_request(options: &ModelOptions, prompt: &str) -> Result<(), ureq::Error> {
     unimplemented!("the send_request function does not handle this response yet");
     let body = json!({
-        "model": options.model,
+        "model": options.full_model_name(),
         "temperature": options.temperature,
         "max_tokens": options.max_tokens,
         "top_p": options.top_p,

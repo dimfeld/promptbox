@@ -4,7 +4,7 @@ use std::{
 };
 
 use clap::{
-    Arg, ArgAction, ArgMatches, Args, Command, CommandFactory, FromArgMatches, Parser, Subcommand,
+    Arg, ArgAction, ArgMatches, Command, CommandFactory, FromArgMatches, Parser, Subcommand,
 };
 use error_stack::{Report, ResultExt};
 
@@ -31,9 +31,13 @@ pub struct GlobalRunArgs {
     /// The template to run
     pub template: String,
 
-    /// Local Host emulating OpenAI API (e.g. LM Studio)
-    #[arg(long, env = "LOCAL_OPENAI_HOST")]
-    pub local_openai_host: Option<String>,
+    /// LM Studio host, if different from the default
+    #[arg(long, env = "LM_STUDIO_HOST")]
+    pub lm_studio_host: Option<String>,
+
+    /// Ollama host, if different from the default
+    #[arg(long, env = "OLLAMA_HOST")]
+    pub ollama_host: Option<String>,
 
     /// OpenAI Key
     #[arg(long, env = "OPENAI_KEY")]
