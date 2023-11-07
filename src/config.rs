@@ -97,6 +97,15 @@ impl ConfigInput {
             });
 
         let Some((config_path, contents)) = config_iter.next() else {
+            // If there is a directory named promptbox, but without a config file, use that.
+            let promptbox_dir = dir.join("promptbox");
+            if promptbox_dir.is_dir() {
+                return Ok(Some(ConfigInput {
+                    templates: vec![promptbox_dir],
+                    ..Default::default()
+                }));
+            }
+
             return Ok(None);
         };
 
