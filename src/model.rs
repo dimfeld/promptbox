@@ -157,27 +157,24 @@ pub enum ModelError {
     Model(u16, String),
 }
 
-pub fn handle_model_response<RESPONSE: DeserializeOwned>(
-    res: Result<ureq::Response, ureq::Error>,
-) -> Result<RESPONSE, Report<ModelError>> {
-    res.map_err(|e| match e {
-        e @ ureq::Error::Transport(_) => Report::new(e).change_context(ModelError::Raw),
+pub fn map_model_response_err(err: ureq::Error) -> Report<ModelError> {
+    match err {
+        err @ ureq::Error::Transport(_) => Report::new(err).change_context(ModelError::Raw),
         ureq::Error::Status(code, response) => {
             let message = response.into_string().unwrap();
             Report::new(ModelError::Model(code, message))
         }
-    })?
-    .into_json()
-    .change_context(ModelError::Deserialize)
+    }
 }
 
 pub fn send_model_request(
     options: &ModelOptions,
     prompt: &str,
-) -> Result<String, Report<ModelError>> {
+    message_tx: flume::Sender<String>,
+) -> Result<(), Report<ModelError>> {
     let (_, module) = options.api_host();
     match module {
-        ModelCommsModule::OpenAi => crate::openai::send_chat_request(options, prompt),
-        ModelCommsModule::Ollama => crate::ollama::send_request(options, prompt),
+        ModelCommsModule::OpenAi => crate::openai::send_chat_request(options, prompt, message_tx),
+        ModelCommsModule::Ollama => crate::ollama::send_request(options, prompt, message_tx),
     }
 }

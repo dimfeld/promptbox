@@ -1,9 +1,8 @@
 use error_stack::{Report, ResultExt};
 use serde::Deserialize;
 use serde_json::json;
-use thiserror::Error;
 
-use crate::model::{handle_model_response, ModelError, ModelOptions};
+use crate::model::{map_model_response_err, ModelError, ModelOptions};
 
 pub const OPENAI_HOST: &str = "https://api.openai.com";
 
@@ -43,7 +42,8 @@ fn create_base_request(config: &ModelOptions, path: &str) -> ureq::Request {
 pub fn send_chat_request(
     options: &ModelOptions,
     prompt: &str,
-) -> Result<String, Report<ModelError>> {
+    message_tx: flume::Sender<String>,
+) -> Result<(), Report<ModelError>> {
     let mut body = json!({
         "model": options.full_model_name(),
         "temperature": options.temperature,
@@ -76,15 +76,21 @@ pub fn send_chat_request(
         body["max_tokens"] = json!(max_tokens);
     }
 
-    let mut response: ChatCompletion = handle_model_response(
-        create_base_request(&options, "v1/chat/completions").send_json(body),
-    )?;
+    let mut response: ChatCompletion = create_base_request(&options, "v1/chat/completions")
+        .send_json(body)
+        .map_err(map_model_response_err)?
+        .into_json()
+        .change_context(ModelError::Deserialize)?;
 
-    Ok(response
+    // TODO streaming
+    let result = response
         .choices
         .get_mut(0)
         .map(|m| m.message.content.take().unwrap_or_default())
-        .unwrap_or_default())
+        .unwrap_or_default();
+
+    message_tx.send(result).ok();
+    Ok(())
 }
 
 pub fn send_completion_request(options: &ModelOptions, prompt: &str) -> Result<(), ureq::Error> {

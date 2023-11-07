@@ -1,4 +1,4 @@
-use std::{ffi::OsString, path::PathBuf};
+use std::{ffi::OsString, io::Write, path::PathBuf};
 
 use args::{parse_main_args, parse_template_args, FoundCommand, GlobalRunArgs};
 use config::Config;
@@ -84,9 +84,20 @@ fn run_template(
         return Ok(());
     }
 
-    let result = send_model_request(&model_options, &prompt).change_context(Error::RunPrompt)?;
+    let (message_tx, message_rx) = flume::bounded(32);
+    let print_thread = std::thread::spawn(move || {
+        let mut stdout = std::io::stdout();
+        for message in message_rx {
+            print!("{}", message);
+            stdout.flush().ok();
+        }
 
-    println!("{}", result);
+        println!("");
+    });
+
+    send_model_request(&model_options, &prompt, message_tx).change_context(Error::RunPrompt)?;
+
+    print_thread.join().unwrap();
 
     Ok(())
 }
@@ -105,7 +116,7 @@ fn run(base_dir: PathBuf, cmdline: Vec<OsString>) -> Result<(), Report<Error>> {
 }
 
 fn main() -> Result<(), Report<Error>> {
-    // Don't show file locations in normal mode
+    // Don't show file locations in release mode
     #[cfg(not(debug_assertions))]
     error_stack::Report::install_debug_hook::<std::panic::Location>(|_, _| {});
 

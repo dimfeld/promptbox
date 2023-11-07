@@ -1,7 +1,10 @@
-use error_stack::Report;
-use serde::{Deserialize, Serialize};
+use std::io::BufRead;
 
-use crate::model::{handle_model_response, ModelError, ModelOptions};
+use error_stack::{Report, ResultExt};
+use serde::{Deserialize, Serialize};
+use ureq::Response;
+
+use crate::model::{map_model_response_err, ModelError, ModelOptions};
 
 #[derive(Debug, Serialize)]
 pub struct OllamaRequest<'a> {
@@ -28,11 +31,15 @@ struct OllamaResponse {
     // TODO Add response stats
 }
 
-pub fn send_request(options: &ModelOptions, prompt: &str) -> Result<String, Report<ModelError>> {
+pub fn send_request(
+    options: &ModelOptions,
+    prompt: &str,
+    message_tx: flume::Sender<String>,
+) -> Result<(), Report<ModelError>> {
     let (host, _) = options.api_host();
     let url = format!("{host}/api/generate");
-    let response: OllamaResponse =
-        handle_model_response(ureq::post(&url).send_json(OllamaRequest {
+    let response: Response = ureq::post(&url)
+        .send_json(OllamaRequest {
             model: &options.full_model_name(),
             prompt,
             options: OllamaModelOptions {
@@ -43,8 +50,17 @@ pub fn send_request(options: &ModelOptions, prompt: &str) -> Result<String, Repo
                 stop: options.stop.clone(),
                 num_predict: options.max_tokens,
             },
-            stream: false,
-        }))?;
+            stream: true,
+        })
+        .map_err(map_model_response_err)?;
 
-    Ok(response.response)
+    let reader = std::io::BufReader::new(response.into_reader());
+    for line in reader.lines() {
+        let line = line.change_context(ModelError::Raw)?;
+        let chunk = serde_json::from_str::<OllamaResponse>(&line)
+            .change_context(ModelError::Deserialize)?;
+        message_tx.send(chunk.response).ok();
+    }
+
+    Ok(())
 }
