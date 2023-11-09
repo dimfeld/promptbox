@@ -34,14 +34,18 @@ struct OllamaResponse {
 pub fn send_request(
     options: &ModelOptions,
     prompt: &str,
+    system: &str,
     message_tx: flume::Sender<String>,
 ) -> Result<(), Report<ModelError>> {
+    // Ollama doesn't support system prompt through the API so just join them.
+    let full_prompt = format!("{system}\n{prompt}");
+
     let (host, _) = options.api_host();
     let url = format!("{host}/api/generate");
     let response: Response = ureq::post(&url)
         .send_json(OllamaRequest {
             model: &options.full_model_name(),
-            prompt,
+            prompt: &full_prompt,
             options: OllamaModelOptions {
                 temperature: options.temperature,
                 top_p: options.top_p,

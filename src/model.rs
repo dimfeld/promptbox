@@ -170,11 +170,16 @@ pub fn map_model_response_err(err: ureq::Error) -> Report<ModelError> {
 pub fn send_model_request(
     options: &ModelOptions,
     prompt: &str,
+    system: &str,
     message_tx: flume::Sender<String>,
 ) -> Result<(), Report<ModelError>> {
     let (_, module) = options.api_host();
     match module {
-        ModelCommsModule::OpenAi => crate::openai::send_chat_request(options, prompt, message_tx),
-        ModelCommsModule::Ollama => crate::ollama::send_request(options, prompt, message_tx),
+        ModelCommsModule::OpenAi => {
+            crate::openai::send_chat_request(options, prompt, system, message_tx)
+        }
+        ModelCommsModule::Ollama => {
+            crate::ollama::send_request(options, prompt, system, message_tx)
+        }
     }
 }

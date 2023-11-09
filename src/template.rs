@@ -47,6 +47,9 @@ pub struct PromptTemplate {
     #[serde(default)]
     pub options: HashMap<String, PromptOption>,
 
+    pub system_prompt: Option<String>,
+    pub system_prompt_path: Option<PathBuf>,
+
     pub template: Option<String>,
     pub template_path: Option<PathBuf>,
 }
@@ -57,6 +60,7 @@ pub struct ParsedTemplate {
     pub input: PromptTemplate,
     pub path: PathBuf,
     pub template: String,
+    pub system: Option<(PathBuf, String)>,
 }
 
 impl ParsedTemplate {
@@ -93,11 +97,30 @@ impl ParsedTemplate {
             (template_path, template_contents)
         };
 
+        let system = if let Some(t) = prompt_template.system_prompt.take() {
+            // Template is embedded in the file
+            Some((path.to_path_buf(), t))
+        } else if let Some(relative_path) = prompt_template.system_prompt_path.as_ref() {
+            // Load it from the specified path
+            let template_path = path
+                .parent()
+                .ok_or(Error::EmptyTemplate)?
+                .join(relative_path);
+
+            let template_contents = std::fs::read_to_string(&template_path)
+                .change_context(Error::TemplateContentsNotFound)
+                .attach_printable_lazy(|| template_path.display().to_string())?;
+            Some((template_path, template_contents))
+        } else {
+            None
+        };
+
         Ok(Some(ParsedTemplate {
             name: name.to_string(),
             input: prompt_template,
             path: template_path,
             template: template_result,
+            system,
         }))
     }
 }
@@ -149,9 +172,10 @@ mod tests {
             "optvalue",
         ]);
 
-        let (args, options, prompt) =
+        let (args, options, prompt, system) =
             generate_template(PathBuf::from(BASE_DIR), "normal".to_string(), cmdline)
                 .expect("generate_template");
+        assert!(system.is_empty());
         assert_eq!(
             prompt,
             r##"This is a template.
@@ -184,7 +208,7 @@ optvalue
     fn in_parent_dir() {
         let cmdline = to_cmdline_vec(vec!["test", "run", "simple"]);
 
-        let (_, _, prompt) =
+        let (_, _, prompt, _) =
             generate_template(base_dir("config_in_subdir"), "simple".to_string(), cmdline)
                 .expect("generate_template");
 
@@ -195,7 +219,7 @@ optvalue
     fn override_template() {
         let cmdline = to_cmdline_vec(vec!["test", "run", "tmp"]);
 
-        let (_, _, prompt) = generate_template(
+        let (_, _, prompt, _) = generate_template(
             base_dir("override_template/override"),
             "tmp".to_string(),
             cmdline,
@@ -209,7 +233,7 @@ optvalue
     fn template_at_path() {
         let cmdline = to_cmdline_vec(vec!["test", "run", "subdir_without_config/indir"]);
 
-        let (_, _, prompt) = generate_template(
+        let (_, _, prompt, _) = generate_template(
             PathBuf::from(BASE_DIR),
             "subdir_without_config/indir".to_string(),
             cmdline,
@@ -271,7 +295,7 @@ optvalue
                 "test1.txt",
             ]);
 
-            let (_, _, prompt) =
+            let (_, _, prompt, _) =
                 generate_template(PathBuf::from(BASE_DIR), "normal".to_string(), cmdline)
                     .expect("generate_template");
             assert_eq!(

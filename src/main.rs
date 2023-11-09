@@ -1,4 +1,8 @@
-use std::{ffi::OsString, io::Write, path::PathBuf};
+use std::{
+    ffi::OsString,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 use args::{parse_main_args, parse_template_args, FoundCommand, GlobalRunArgs};
 use config::Config;
@@ -23,17 +27,37 @@ mod template;
 #[cfg(test)]
 mod tests;
 
+fn render_template(
+    parser: &liquid::Parser,
+    template_path: &Path,
+    template: String,
+    context: &liquid::Object,
+) -> Result<String, Report<Error>> {
+    let parsed = parser
+        .parse(&template)
+        .change_context(Error::ParseTemplate)
+        .attach_printable_lazy(|| template_path.display().to_string())?;
+
+    let prompt = parsed
+        .render(&context)
+        .change_context(Error::ParseTemplate)
+        .attach_printable_lazy(|| template_path.display().to_string())?;
+
+    Ok(prompt)
+}
+
 fn generate_template(
     base_dir: PathBuf,
     template: String,
     cmdline: Vec<OsString>,
-) -> Result<(GlobalRunArgs, ModelOptions, String), Report<Error>> {
+) -> Result<(GlobalRunArgs, ModelOptions, String, String), Report<Error>> {
     let config = Config::from_directory(base_dir.clone())?;
 
     let ParsedTemplate {
         template,
         path: template_path,
         input,
+        system,
         ..
     } = config.find_template(&template)?;
 
@@ -53,20 +77,21 @@ fn generate_template(
         .build()
         .expect("failed to build parser");
 
-    let parsed = parser
-        .parse(&template)
-        .change_context(Error::ParseTemplate)
+    let prompt = render_template(&parser, &template_path, template, &template_context)
+        .attach_printable("Rendering template")
         .attach_printable_lazy(|| template_path.display().to_string())?;
-
-    let prompt = parsed
-        .render(&template_context)
-        .change_context(Error::ParseTemplate)
-        .attach_printable_lazy(|| template_path.display().to_string())?;
+    let system_prompt = if let Some((system_path, system_template)) = system {
+        render_template(&parser, &system_path, system_template, &template_context)
+            .attach_printable("Rendering system template")
+            .attach_printable_lazy(|| system_path.display().to_string())?
+    } else {
+        String::new()
+    };
 
     let mut model_options = config.model;
     model_options.update_from_args(&args);
 
-    Ok((args, model_options, prompt))
+    Ok((args, model_options, prompt, system_prompt))
 }
 
 fn run_template(
@@ -74,10 +99,13 @@ fn run_template(
     template: String,
     args: Vec<OsString>,
 ) -> Result<(), Report<Error>> {
-    let (args, model_options, prompt) = generate_template(base_dir, template, args)?;
+    let (args, model_options, prompt, system) = generate_template(base_dir, template, args)?;
 
     if args.print_prompt || args.verbose || args.dry_run {
-        println!("{}\n\nResult:", prompt);
+        if !system.is_empty() {
+            println!("System:\n{system}\n");
+        }
+        println!("Prompt:\n{}\n\nResult:", prompt);
     }
 
     if args.dry_run {
@@ -95,7 +123,8 @@ fn run_template(
         println!("");
     });
 
-    send_model_request(&model_options, &prompt, message_tx).change_context(Error::RunPrompt)?;
+    send_model_request(&model_options, &prompt, &system, message_tx)
+        .change_context(Error::RunPrompt)?;
 
     print_thread.join().unwrap();
 

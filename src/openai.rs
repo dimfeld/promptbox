@@ -42,18 +42,34 @@ fn create_base_request(config: &ModelOptions, path: &str) -> ureq::Request {
 pub fn send_chat_request(
     options: &ModelOptions,
     prompt: &str,
+    system: &str,
     message_tx: flume::Sender<String>,
 ) -> Result<(), Report<ModelError>> {
-    let mut body = json!({
-        "model": options.full_model_name(),
-        "temperature": options.temperature,
-        "user": "promptbox",
-        "messages": [
+    let messages = if system.is_empty() {
+        json!([
             {
                 "role": "user",
                 "content": prompt,
             }
-        ]
+        ])
+    } else {
+        json!([
+            {
+                "role": "system",
+                "content": system,
+            },
+            {
+                "role": "user",
+                "content": prompt,
+            }
+        ])
+    };
+
+    let mut body = json!({
+        "model": options.full_model_name(),
+        "temperature": options.temperature,
+        "user": "promptbox",
+        "messages": messages
     });
 
     if let Some(val) = options.presence_penalty.as_ref() {
