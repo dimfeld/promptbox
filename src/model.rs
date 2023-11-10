@@ -174,6 +174,12 @@ pub fn send_model_request(
     message_tx: flume::Sender<String>,
 ) -> Result<(), Report<ModelError>> {
     let (_, module) = options.api_host();
+    let system = if system.is_empty() {
+        None
+    } else {
+        Some(system)
+    };
+
     match module {
         ModelCommsModule::OpenAi => {
             crate::openai::send_chat_request(options, prompt, system, message_tx)

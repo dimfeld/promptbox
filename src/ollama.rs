@@ -10,6 +10,7 @@ use crate::model::{map_model_response_err, ModelError, ModelOptions};
 pub struct OllamaRequest<'a> {
     pub model: &'a str,
     pub prompt: &'a str,
+    pub system: Option<&'a str>,
     pub stream: bool,
     pub options: OllamaModelOptions,
 }
@@ -34,18 +35,16 @@ struct OllamaResponse {
 pub fn send_request(
     options: &ModelOptions,
     prompt: &str,
-    system: &str,
+    system: Option<&str>,
     message_tx: flume::Sender<String>,
 ) -> Result<(), Report<ModelError>> {
-    // Ollama doesn't support system prompt through the API so just join them.
-    let full_prompt = format!("{system}\n{prompt}");
-
     let (host, _) = options.api_host();
     let url = format!("{host}/api/generate");
     let response: Response = ureq::post(&url)
         .send_json(OllamaRequest {
             model: &options.full_model_name(),
-            prompt: &full_prompt,
+            prompt,
+            system,
             options: OllamaModelOptions {
                 temperature: options.temperature,
                 top_p: options.top_p,

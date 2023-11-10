@@ -42,11 +42,15 @@ fn create_base_request(config: &ModelOptions, path: &str) -> ureq::Request {
 pub fn send_chat_request(
     options: &ModelOptions,
     prompt: &str,
-    system: &str,
+    system: Option<&str>,
     message_tx: flume::Sender<String>,
 ) -> Result<(), Report<ModelError>> {
-    let messages = if system.is_empty() {
+    let messages = if let Some(system) = system {
         json!([
+            {
+                "role": "system",
+                "content": system,
+            },
             {
                 "role": "user",
                 "content": prompt,
@@ -54,10 +58,6 @@ pub fn send_chat_request(
         ])
     } else {
         json!([
-            {
-                "role": "system",
-                "content": system,
-            },
             {
                 "role": "user",
                 "content": prompt,
