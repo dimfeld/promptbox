@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use error_stack::{Report, ResultExt};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use error_stack::Report;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
@@ -21,6 +21,7 @@ pub struct ModelOptions {
     pub ollama_host: Option<String>,
     pub openai_key: Option<String>,
     pub temperature: f32,
+    pub format: Option<OutputFormat>,
     pub top_k: Option<u32>,
     pub top_p: Option<f32>,
     pub frequency_penalty: Option<f32>,
@@ -42,6 +43,7 @@ impl Default for ModelOptions {
             ollama_host: None,
             openai_key: None,
             temperature: DEFAULT_TEMPERATURE,
+            format: None,
             top_k: None,
             top_p: None,
             frequency_penalty: None,
@@ -97,6 +99,7 @@ impl From<ModelOptionsInput> for ModelOptions {
             lm_studio_host: value.lm_studio_host,
             ollama_host: value.ollama_host,
             temperature: value.temperature.unwrap_or(DEFAULT_TEMPERATURE),
+            format: value.format,
             top_p: value.top_p,
             top_k: value.top_k,
             frequency_penalty: value.frequency_penalty,
@@ -108,12 +111,19 @@ impl From<ModelOptionsInput> for ModelOptions {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+pub enum OutputFormat {
+    JSON,
+}
+
 #[derive(Deserialize, Debug, Default, Clone)]
 pub struct ModelOptionsInput {
     pub model: Option<String>,
     pub lm_studio_host: Option<String>,
     pub ollama_host: Option<String>,
     pub temperature: Option<f32>,
+    pub format: Option<OutputFormat>,
     pub top_p: Option<f32>,
     pub top_k: Option<u32>,
     pub frequency_penalty: Option<f32>,
@@ -132,6 +142,7 @@ impl ModelOptionsInput {
         update_if_none(&mut self.lm_studio_host, &other.lm_studio_host);
         update_if_none(&mut self.ollama_host, &other.ollama_host);
         update_if_none(&mut self.temperature, &other.temperature);
+        update_if_none(&mut self.format, &other.format);
         update_if_none(&mut self.top_p, &other.top_p);
         update_if_none(&mut self.top_k, &other.top_k);
         update_if_none(&mut self.frequency_penalty, &other.frequency_penalty);

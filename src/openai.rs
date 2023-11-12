@@ -72,6 +72,10 @@ pub fn send_chat_request(
         "messages": messages
     });
 
+    if let Some(val) = options.format.as_ref() {
+        body["format"] = json!(val);
+    }
+
     if let Some(val) = options.presence_penalty.as_ref() {
         body["presence_penalty"] = json!(val);
     }

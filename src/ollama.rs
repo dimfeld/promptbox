@@ -4,13 +4,14 @@ use error_stack::{Report, ResultExt};
 use serde::{Deserialize, Serialize};
 use ureq::Response;
 
-use crate::model::{map_model_response_err, ModelError, ModelOptions};
+use crate::model::{map_model_response_err, ModelError, ModelOptions, OutputFormat};
 
 #[derive(Debug, Serialize)]
 pub struct OllamaRequest<'a> {
     pub model: &'a str,
     pub prompt: &'a str,
     pub system: Option<&'a str>,
+    pub format: Option<OutputFormat>,
     pub stream: bool,
     pub options: OllamaModelOptions,
 }
@@ -45,6 +46,7 @@ pub fn send_request(
             model: &options.full_model_name(),
             prompt,
             system,
+            format: options.format,
             options: OllamaModelOptions {
                 temperature: options.temperature,
                 top_p: options.top_p,
