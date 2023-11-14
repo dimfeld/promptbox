@@ -1,0 +1,39 @@
+# This needs some more tweaking. Not even GPT4 creates completely valid `patch` format output so some other handling is
+# needed.
+template = '''
+You are an expert programmer tasked with {%if file %}updating{%else%}writing{% endif %} {%- if lang %} {{lang}}{% endif %} code.
+Existing files start with --- and the filename, followed by the contents.
+
+{% if file -%}
+
+Your task is to update {{file.filename}} file to {{task}}. Changes should be printed in Unix patch/diff format.
+
+
+--- {{file.path}}
+{{file.contents}}
+
+{%else %}
+Your task is to write a new file to {{task}}.
+{% endif %}
+
+{%-if context.size -%}
+
+{% for f in context %}
+--- {{f.path}}
+{{f.contents}}
+{% endfor %}
+
+{%- endif -%}
+
+Result{% if file %} in Unix patch format{% endif %}:
+'''
+
+[options]
+task = { type = "string", description = "The task to be completed" }
+lang = { type = "string", optional = true, description = "The language of the file" }
+file = { type = "file", optional = true, description = "The file to update" }
+context = { type = "file", array = true, optional = true, description = "Additional files for context" }
+
+[model]
+model = "yarn-mistral"
+temperature = 0

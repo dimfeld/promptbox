@@ -1,0 +1,13 @@
+description = "Summarize some files"
+template_path = "summarize.liquid"
+
+[model]
+temperature = 0.7
+# Also supports top_p, frequency_penalty, presence_penalty, stop, and max_tokens
+
+[options]
+len = { type = "int", description = "The length of the summary", optional = true }
+topic = { type = "string", optional = true, description = "The topic of the summary" }
+style = { type = "string", default = "concise" }
+file = { type = "file", array = true, description = "The files to summarize" }
+

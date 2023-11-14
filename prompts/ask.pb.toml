@@ -1,0 +1,13 @@
+description = "Ask a question"
+template = '''
+Answer the below question {%- if style %} in a {{style}} style{% endif -%} {%- if len %} in about {{len}} sentences{% endif -%}.
+'''
+
+[model]
+temperature = 0.7
+# Also supports top_p, frequency_penalty, presence_penalty, stop, and max_tokens
+
+[options]
+len = { type = "int", description = "The length of the summary", optional = true }
+style = { type = "string", optional = true }
+

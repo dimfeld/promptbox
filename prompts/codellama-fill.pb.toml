@@ -1,0 +1,11 @@
+template = "<PRE> {{prefix}} <SUF>{{suffix}} <MID>"
+
+description = "Fill in the gaps in a text"
+
+[model]
+model = 'codellama-complete'
+temperature = 0
+
+[options]
+prefix = { type = "string" }
+suffix = { type = "string", optional = true }

@@ -1,0 +1,9 @@
+[model]
+model = "gpt-3.5-turbo-1106"
+
+[model.alias]
+codellama = "codellama:7b-instruct-q5_K_M"
+codellama-complete = "codellama:7b-code-q5_K_M"
+mistral = "mistral:7b-instruct-q5_K_M"
+yarn-mistral = "yarn-mistral:7b-128k-q5_K_M"
+zephyr = "zephyr:7b-beta-q5_K_M"
