@@ -157,7 +157,7 @@ fn run_template(
 }
 
 fn run(base_dir: PathBuf, cmdline: Vec<OsString>) -> Result<(), Report<Error>> {
-    let args = parse_main_args(cmdline).change_context(Error::ArgParseFailure)?;
+    let args = parse_main_args(cmdline).map_err(Error::CmdlineParseFailure)?;
 
     match args {
         FoundCommand::Run { template, args } => run_template(base_dir, template, args)?,
