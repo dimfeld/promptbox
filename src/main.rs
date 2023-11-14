@@ -128,9 +128,9 @@ fn run_template(
 
     if args.print_prompt || args.verbose || args.dry_run {
         if !system.is_empty() {
-            println!("System:\n{system}\n");
+            println!("== System:\n{system}\n");
         }
-        println!("Prompt:\n{}\n\nResult:", prompt);
+        println!("== Prompt:\n{prompt}\n\n== Result:");
     }
 
     if args.dry_run {
