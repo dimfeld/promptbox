@@ -16,4 +16,8 @@ pub enum Error {
     ArgParseFailure,
     #[error("Encountered an error running the prompt")]
     RunPrompt,
+    #[error("Failed reading input")]
+    Io,
+    #[error(transparent)]
+    CmdlineParseFailure(#[from] clap::Error),
 }

@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
-use error_stack::Report;
+use error_stack::{Report, ResultExt};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -115,6 +115,17 @@ impl From<ModelOptionsInput> for ModelOptions {
 #[serde(rename_all = "lowercase")]
 pub enum OutputFormat {
     JSON,
+}
+
+impl FromStr for OutputFormat {
+    type Err = Report<crate::error::Error>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "json" => Ok(Self::JSON),
+            _ => Err(crate::error::Error::ArgParseFailure).attach_printable_lazy(|| s.to_string()),
+        }
+    }
 }
 
 #[derive(Deserialize, Debug, Default, Clone)]

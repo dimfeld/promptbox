@@ -1,6 +1,6 @@
 use std::{
     ffi::OsString,
-    io::Write,
+    io::{IsTerminal, Write},
     path::{Path, PathBuf},
 };
 
@@ -68,6 +68,31 @@ fn generate_template(
         (Some(pre), None) => format!("{pre}\n\n{template}"),
         (None, Some(post)) => format!("{template}\n\n{post}"),
         (None, None) => template,
+    };
+
+    let template = if args.extra_prompt.is_empty() {
+        template
+    } else {
+        format!(
+            "{template}\n\n{extra}",
+            extra = args.extra_prompt.join("\n\n")
+        )
+    };
+
+    let stdin = std::io::stdin();
+    let template = if stdin.is_terminal() {
+        // stdin is the terminal, so don't bother readying
+        template
+    } else {
+        // Some text is potentially being piped in, so read it.
+        let stdin_value = std::io::read_to_string(stdin)
+            .attach_printable("Reading stdin")
+            .change_context(Error::Io)?;
+        if stdin_value.is_empty() {
+            template
+        } else {
+            format!("{template}\n\n{stdin_value}")
+        }
     };
 
     // TODO replace InMemorySource with a custom source that can look for partials in the various

@@ -10,6 +10,7 @@ use error_stack::{Report, ResultExt};
 
 use crate::{
     error::Error,
+    model::OutputFormat,
     template::{OptionType, PromptOption, PromptTemplate},
 };
 
@@ -70,9 +71,13 @@ pub struct GlobalRunArgs {
     /// Print the prompt and the model parameters
     #[arg(long, short)]
     pub verbose: bool,
-    // /// Output JSON instead of just text
-    // #[arg(long)]
-    // pub json: bool,
+
+    /// Output JSON instead of just text
+    #[arg(long, short)]
+    pub json: Option<OutputFormat>,
+
+    /// Extra strings to add to the end of the prompt.
+    pub extra_prompt: Vec<String>,
 }
 
 pub enum FoundCommand {
@@ -158,7 +163,7 @@ pub fn parse_template_args(
     let main_parsed = Command::new("promptbox")
         .subcommand(run_command)
         .try_get_matches_from(cmdline)
-        .change_context(Error::ArgParseFailure)?;
+        .map_err(Error::from)?;
 
     let mut parsed = main_parsed
         .subcommand_matches("run")
