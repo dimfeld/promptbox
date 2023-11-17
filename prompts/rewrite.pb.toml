@@ -1,0 +1,9 @@
+template = '''
+Rewrite the below text to be {{change}}:
+
+{% if file %}{{file}}{% endif %}
+'''
+
+[options]
+change = { type = "string", default = "better" }
+file = { type = "file", optional = true }
