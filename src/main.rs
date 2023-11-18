@@ -46,6 +46,11 @@ fn render_template(
     Ok(prompt)
 }
 
+fn template_references_extra(template: &str) -> bool {
+    let extra_regex = regex::Regex::new(r##"\{\{-?\s*extra\s*-?\}\}"##).unwrap();
+    extra_regex.is_match(template)
+}
+
 fn generate_template(
     base_dir: PathBuf,
     template: String,
@@ -61,42 +66,48 @@ fn generate_template(
         ..
     } = config.find_template(&template)?;
 
-    let (args, template_context) = parse_template_args(cmdline, &base_dir, &input)?;
+    let (mut args, mut template_context) = parse_template_args(cmdline, &base_dir, &input)?;
 
-    let template = match args.prepend.as_ref() {
+    let mut model_options = config.model;
+    model_options.update_from_model_input(&input.model);
+    model_options.update_from_args(&args);
+
+    let mut template = match args.prepend.as_ref() {
         Some(pre) => format!("{pre}\n\n{template}"),
         None => template,
     };
 
-    let template = if args.extra_prompt.is_empty() {
-        template
-    } else {
-        format!(
-            "{template}\n\n{extra}",
-            extra = args.extra_prompt.join("\n\n")
-        )
-    };
+    let mut extra = std::mem::take(&mut args.extra_prompt);
+    //     vec![]
+    // } else {
+    //
+    //     format!(
+    //         "{template}\n\n{extra}",
+    //         extra = args.extra_prompt.join("\n\n")
+    //     )
+    // };
 
     let stdin = std::io::stdin();
-    let template = if stdin.is_terminal() {
-        // stdin is the terminal, so don't bother readying
-        template
-    } else {
+    if !stdin.is_terminal() {
         // Some text is potentially being piped in, so read it.
         let stdin_value = std::io::read_to_string(stdin)
             .attach_printable("Reading stdin")
             .change_context(Error::Io)?;
-        if stdin_value.is_empty() {
-            template
-        } else {
-            format!("{template}\n\n{stdin_value}")
+        if !stdin_value.is_empty() {
+            extra.push(stdin_value);
         }
     };
 
-    let template = if let Some(append) = args.append.as_ref() {
-        format!("{template}\n\n{append}")
-    } else {
-        template
+    let extra_content = extra.join("\n\n");
+    if template_references_extra(&template) {
+        template_context.insert("extra".into(), liquid::model::Value::scalar(extra_content));
+    } else if !extra_content.is_empty() {
+        template = format!("{template}\n\n{extra_content}");
+    }
+
+    let template = match args.append.as_ref() {
+        Some(append) => format!("{template}\n\n{append}"),
+        None => template,
     };
 
     // TODO replace InMemorySource with a custom source that can look for partials in the various
@@ -116,10 +127,6 @@ fn generate_template(
     } else {
         String::new()
     };
-
-    let mut model_options = config.model;
-    model_options.update_from_model_input(&input.model);
-    model_options.update_from_args(&args);
 
     Ok((args, model_options, prompt, system_prompt))
 }
@@ -188,4 +195,46 @@ fn main() -> Result<(), Report<Error>> {
         std::env::current_dir().unwrap(),
         std::env::args().into_iter().map(OsString::from).collect(),
     )
+}
+
+#[cfg(test)]
+mod test {
+    mod template_references_extra {
+        use crate::template_references_extra;
+
+        #[test]
+        fn basic() {
+            assert_eq!(template_references_extra(" {{extra}} "), true);
+        }
+
+        #[test]
+        fn spaces() {
+            assert_eq!(template_references_extra("{{ extra }}"), true);
+        }
+
+        #[test]
+        fn dashes() {
+            assert_eq!(template_references_extra("{{-extra-}}"), true);
+        }
+
+        #[test]
+        fn dashes_and_spaces() {
+            assert_eq!(template_references_extra("{{- extra -}}"), true);
+        }
+
+        #[test]
+        fn newlines() {
+            assert_eq!(template_references_extra("{{\n\n\textra\n\t}}"), true);
+        }
+
+        #[test]
+        fn notmatch_braces() {
+            assert_eq!(template_references_extra("{extra}}"), false);
+        }
+
+        #[test]
+        fn notmatch() {
+            assert_eq!(template_references_extra("{{bextra}}"), false);
+        }
+    }
 }

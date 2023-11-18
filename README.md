@@ -59,6 +59,24 @@ model options and inherit settings from parent directories. Get ready to revolut
 with PromptBox!
 ```
 
+# Additional Input
+
+Promptbox can take additional input from extra command-line arguments or have it piped in from another command.
+
+`cat "transcript.txt" | pb run summarize "Here is the transcript:"`
+
+By default, this content is appended to the end of the prompt, but the template can reference it as `{{extra}}`
+to have it placed elsewhere in the prompt, as in this example. 
+```liquid
+Below is a transcript of a video named "{{title}}":
+
+{{extra}}
+
+Create a detailed outline of the above transcript.
+```
+This can be help when using this mode with models that work best when
+their instructions are at end of the prompt.
+
 # Configuration Files
 
 Each directory of templates contains a configuration file, which can set default model options. Config files are read
