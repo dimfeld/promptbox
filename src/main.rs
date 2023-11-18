@@ -114,6 +114,7 @@ fn generate_template(
     };
 
     let mut model_options = config.model;
+    model_options.update_from_model_input(&input.model);
     model_options.update_from_args(&args);
 
     Ok((args, model_options, prompt, system_prompt))

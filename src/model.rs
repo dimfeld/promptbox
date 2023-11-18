@@ -88,6 +88,26 @@ impl ModelOptions {
             (host, ModelCommsModule::Ollama)
         }
     }
+
+    pub fn update_from_model_input(&mut self, other: &ModelOptionsInput) {
+        overwrite_from_option(&mut self.model, &other.model);
+        overwrite_option_from_option(&mut self.lm_studio_host, &other.lm_studio_host);
+        overwrite_option_from_option(&mut self.ollama_host, &other.ollama_host);
+        overwrite_from_option(&mut self.temperature, &other.temperature);
+        overwrite_option_from_option(&mut self.format, &other.format);
+        overwrite_option_from_option(&mut self.top_p, &other.top_p);
+        overwrite_option_from_option(&mut self.top_k, &other.top_k);
+        overwrite_option_from_option(&mut self.frequency_penalty, &other.frequency_penalty);
+        overwrite_option_from_option(&mut self.presence_penalty, &other.presence_penalty);
+        overwrite_from_option(&mut self.stop, &other.stop);
+        overwrite_option_from_option(&mut self.max_tokens, &other.max_tokens);
+
+        for (key, value) in &other.alias {
+            if !self.alias.contains_key(key) {
+                self.alias.insert(key.clone(), value.clone());
+            }
+        }
+    }
 }
 
 impl From<ModelOptionsInput> for ModelOptions {
