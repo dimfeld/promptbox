@@ -63,11 +63,9 @@ fn generate_template(
 
     let (args, template_context) = parse_template_args(cmdline, &base_dir, &input)?;
 
-    let template = match (args.prepend.as_ref(), args.append.as_ref()) {
-        (Some(pre), Some(post)) => format!("{pre}\n\n{template}\n\n{post}"),
-        (Some(pre), None) => format!("{pre}\n\n{template}"),
-        (None, Some(post)) => format!("{template}\n\n{post}"),
-        (None, None) => template,
+    let template = match args.prepend.as_ref() {
+        Some(pre) => format!("{pre}\n\n{template}"),
+        None => template,
     };
 
     let template = if args.extra_prompt.is_empty() {
@@ -93,6 +91,12 @@ fn generate_template(
         } else {
             format!("{template}\n\n{stdin_value}")
         }
+    };
+
+    let template = if let Some(append) = args.append.as_ref() {
+        format!("{template}\n\n{append}")
+    } else {
+        template
     };
 
     // TODO replace InMemorySource with a custom source that can look for partials in the various
@@ -127,11 +131,15 @@ fn run_template(
 ) -> Result<(), Report<Error>> {
     let (args, model_options, prompt, system) = generate_template(base_dir, template, args)?;
 
+    if args.verbose {
+        eprintln!("{model_options:?}");
+    }
+
     if args.print_prompt || args.verbose || args.dry_run {
         if !system.is_empty() {
-            println!("== System:\n{system}\n");
+            eprintln!("== System:\n{system}\n");
         }
-        println!("== Prompt:\n{prompt}\n\n== Result:");
+        eprintln!("== Prompt:\n{prompt}\n\n== Result:");
     }
 
     if args.dry_run {
