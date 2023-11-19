@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use error_stack::{Report, ResultExt};
 use serde::Deserialize;
 use serde_json::json;
@@ -97,6 +99,7 @@ pub fn send_chat_request(
     }
 
     let mut response: ChatCompletion = create_base_request(&options, "v1/chat/completions")
+        .timeout(Duration::from_secs(30))
         .send_json(body)
         .map_err(map_model_response_err)?
         .into_json()
