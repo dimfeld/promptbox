@@ -1,18 +1,27 @@
+<div class="oranda-hide">
+
 # PromptBox
 
-This utility allows maintaining libraries of LLM prompt templates which can be filled in and submitted from the command
-line.
+</div>
+
+PromptBox allows maintaining libraries of LLM prompt templates which can be filled in and submitted from the command
+line. It can submit prompts to the OpenAI API, [Ollama](https://ollama.ai), or [LM Studio](https://lmstudio.ai/).
 
 # Template Files
 
 - are built in TOML
 - can use Liquid templating, and reference templates in other files
 - define command-line arguments, which can include references to files
+- have the filename format `<NAME>.pb.toml`
 
 ```toml
 # File: summarize.pb.toml
 
 description = "Summarize some files"
+
+# Optional system prompt
+# Or `system_prompt_path` to read from a template file
+system_prompt = "You are a great summarizer."
 
 # This can also be template_path to read from another file.
 template = '''
@@ -32,6 +41,7 @@ File {{ f.filename }}:
 model = "gpt-3.5-turbo"
 temperature = 0.7
 # Also supports top_p, frequency_penalty, presence_penalty, stop, and max_tokens
+# And format = "json"
 
 [options]
 len = { type = "int", description = "The length of the summary", default = 4 }
@@ -59,7 +69,7 @@ model options and inherit settings from parent directories. Get ready to revolut
 with PromptBox!
 ```
 
-# Additional Input
+## Additional Input
 
 Promptbox can take additional input from extra command-line arguments or have it piped in from another command.
 
@@ -77,12 +87,52 @@ Create a detailed outline of the above transcript.
 This can be help when using this mode with models that work best when
 their instructions are at end of the prompt.
 
+## Model Choice
+
+PromptBox supports a few model hosts, and uses a very simple logic to choose the host:
+
+- Any model name starting with "gpt-3.5" or "gpt-4" will result in a call to the OpenAI API.
+- The value "lm-studio" will result in a call to LM Studio. LM Studio's API currently does not support selecting a
+    model, so you will need to switch it yourself in the GUI.
+- Any other model name indicates a model from Ollama.
+
+Models can use aliases as well. In either the template or a configuration file, you can add an `model.alias` section.
+
+```toml
+[model.alias]
+phind = "phind-codellama:34b-v2-q5_K_M"
+deepseek = "deepseek-coder:7b"
+```
+
+These model aliases can then be used in place of the actual model name.
+
 # Configuration Files
 
 Each directory of templates contains a configuration file, which can set default model options. Config files are read
-from the current directory up through the parent directories, and the global configuration directory such as
-`.config/promptbox/promptbox.toml` is read as well.
+from the current directory up through the parent directories. 
+
+In each directory searched, Promptbox will look for a configuration file in that directory and in a
+`promptbox` subdirectory.
+
+The global configuration directory such as `.config/promptbox/promptbox.toml` is read as well.
 
 A configuration file inherits settings from the config files in its parent directories as well, for those options that
-it does not set itself.
+it does not set itself. All settings in a configuration file are optional.
+
+```toml
+# By default the templates are in the same directory as the configuration file, but this can be overridden
+# by setting the templates option
+templates = ["template_dir"]
+
+# This can be set to true to tell PromptBox to stop looking in parent directories for
+# configurations and templates.
+top_level = false
+
+# Set this to false to tell PromptBox to not read the global configuration file.
+use_global_config = true
+
+[model]
+# Set a default model. All the other options from the template's `model` section can be used here.
+model = "gpt-3.5-turbo"
+```
 

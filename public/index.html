@@ -529,18 +529,25 @@
 <a href="/artifacts/" class="button mobile-download primary">View all installation options</a>
 
 
-    <h1>PromptBox</h1>
-<p>This utility allows maintaining libraries of LLM prompt templates which can be filled in and submitted from the command
-line.</p>
+    <div class="oranda-hide">
+<h1>PromptBox</h1>
+</div>
+<p>PromptBox allows maintaining libraries of LLM prompt templates which can be filled in and submitted from the command
+line. It can submit prompts to the OpenAI API, <a href="https://ollama.ai" rel="noopener noreferrer">Ollama</a>, or <a href="https://lmstudio.ai/" rel="noopener noreferrer">LM Studio</a>.</p>
 <h1>Template Files</h1>
 <ul>
 <li>are built in TOML</li>
 <li>can use Liquid templating, and reference templates in other files</li>
 <li>define command-line arguments, which can include references to files</li>
+<li>have the filename format <code>&lt;NAME&gt;.pb.toml</code></li>
 </ul>
 <pre style="background-color:#263238;"><span style="font-style:italic;color:#546e7a;"># File: summarize.pb.toml
 </span><span style="color:#eeffff;">
 </span><span style="color:#f07178;">description </span><span style="color:#89ddff;">= "</span><span style="color:#c3e88d;">Summarize some files</span><span style="color:#89ddff;">"
+</span><span style="color:#eeffff;">
+</span><span style="font-style:italic;color:#546e7a;"># Optional system prompt
+</span><span style="font-style:italic;color:#546e7a;"># Or `system_prompt_path` to read from a template file
+</span><span style="color:#f07178;">system_prompt </span><span style="color:#89ddff;">= "</span><span style="color:#c3e88d;">You are a great summarizer.</span><span style="color:#89ddff;">"
 </span><span style="color:#eeffff;">
 </span><span style="font-style:italic;color:#546e7a;"># This can also be template_path to read from another file.
 </span><span style="color:#f07178;">template </span><span style="color:#89ddff;">= '''
@@ -560,6 +567,7 @@ line.</p>
 </span><span style="color:#f07178;">model </span><span style="color:#89ddff;">= "</span><span style="color:#c3e88d;">gpt-3.5-turbo</span><span style="color:#89ddff;">"
 </span><span style="color:#f07178;">temperature </span><span style="color:#89ddff;">= </span><span style="color:#f78c6c;">0.7
 </span><span style="font-style:italic;color:#546e7a;"># Also supports top_p, frequency_penalty, presence_penalty, stop, and max_tokens
+</span><span style="font-style:italic;color:#546e7a;"># And format = "json"
 </span><span style="color:#eeffff;">
 </span><span style="color:#89ddff;">[options]
 </span><span style="color:#f07178;">len </span><span style="color:#89ddff;">= { </span><span style="color:#f07178;">type </span><span style="color:#89ddff;">= "</span><span style="color:#c3e88d;">int</span><span style="color:#89ddff;">", </span><span style="color:#f07178;">description </span><span style="color:#89ddff;">= "</span><span style="color:#c3e88d;">The length of the summary</span><span style="color:#89ddff;">", </span><span style="color:#f07178;">default </span><span style="color:#89ddff;">= </span><span style="color:#f78c6c;">4 </span><span style="color:#89ddff;">}
@@ -585,7 +593,7 @@ line.</p>
 </span><span style="color:#eeffff;">with PromptBox!
 </span></pre>
 
-<h1>Additional Input</h1>
+<h2>Additional Input</h2>
 <p>Promptbox can take additional input from extra command-line arguments or have it piped in from another command.</p>
 <p><code>cat "transcript.txt" | pb run summarize "Here is the transcript:"</code></p>
 <p>By default, this content is appended to the end of the prompt, but the template can reference it as <code>{{extra}}</code>
@@ -599,12 +607,45 @@ to have it placed elsewhere in the prompt, as in this example.</p>
 
 <p>This can be help when using this mode with models that work best when
 their instructions are at end of the prompt.</p>
+<h2>Model Choice</h2>
+<p>PromptBox supports a few model hosts, and uses a very simple logic to choose the host:</p>
+<ul>
+<li>Any model name starting with "gpt-3.5" or "gpt-4" will result in a call to the OpenAI API.</li>
+<li>The value "lm-studio" will result in a call to LM Studio. LM Studio's API currently does not support selecting a
+model, so you will need to switch it yourself in the GUI.</li>
+<li>Any other model name indicates a model from Ollama.</li>
+</ul>
+<p>Models can use aliases as well. In either the template or a configuration file, you can add an <code>model.alias</code> section.</p>
+<pre style="background-color:#263238;"><span style="color:#89ddff;">[model.alias]
+</span><span style="color:#f07178;">phind </span><span style="color:#89ddff;">= "</span><span style="color:#c3e88d;">phind-codellama:34b-v2-q5_K_M</span><span style="color:#89ddff;">"
+</span><span style="color:#f07178;">deepseek </span><span style="color:#89ddff;">= "</span><span style="color:#c3e88d;">deepseek-coder:7b</span><span style="color:#89ddff;">"
+</span></pre>
+
+<p>These model aliases can then be used in place of the actual model name.</p>
 <h1>Configuration Files</h1>
 <p>Each directory of templates contains a configuration file, which can set default model options. Config files are read
-from the current directory up through the parent directories, and the global configuration directory such as
-<code>.config/promptbox/promptbox.toml</code> is read as well.</p>
+from the current directory up through the parent directories.</p>
+<p>In each directory searched, Promptbox will look for a configuration file in that directory and in a
+<code>promptbox</code> subdirectory.</p>
+<p>The global configuration directory such as <code>.config/promptbox/promptbox.toml</code> is read as well.</p>
 <p>A configuration file inherits settings from the config files in its parent directories as well, for those options that
-it does not set itself.</p>
+it does not set itself. All settings in a configuration file are optional.</p>
+<pre style="background-color:#263238;"><span style="font-style:italic;color:#546e7a;"># By default the templates are in the same directory as the configuration file, but this can be overridden
+</span><span style="font-style:italic;color:#546e7a;"># by setting the templates option
+</span><span style="color:#f07178;">templates </span><span style="color:#89ddff;">= ["</span><span style="color:#c3e88d;">template_dir</span><span style="color:#89ddff;">"]
+</span><span style="color:#eeffff;">
+</span><span style="font-style:italic;color:#546e7a;"># This can be set to true to tell PromptBox to stop looking in parent directories for
+</span><span style="font-style:italic;color:#546e7a;"># configurations and templates.
+</span><span style="color:#f07178;">top_level </span><span style="color:#89ddff;">= </span><span style="color:#f78c6c;">false
+</span><span style="color:#eeffff;">
+</span><span style="font-style:italic;color:#546e7a;"># Set this to false to tell PromptBox to not read the global configuration file.
+</span><span style="color:#f07178;">use_global_config </span><span style="color:#89ddff;">= </span><span style="color:#f78c6c;">true
+</span><span style="color:#eeffff;">
+</span><span style="color:#89ddff;">[model]
+</span><span style="font-style:italic;color:#546e7a;"># Set a default model. All the other options from the template's `model` section can be used here.
+</span><span style="color:#f07178;">model </span><span style="color:#89ddff;">= "</span><span style="color:#c3e88d;">gpt-3.5-turbo</span><span style="color:#89ddff;">"
+</span></pre>
+
 
 
 
