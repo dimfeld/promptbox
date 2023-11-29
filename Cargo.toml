@@ -3,6 +3,12 @@ name = "promptbox"
 version = "0.1.0"
 edition = "2021"
 resolver = "2"
+authors = ["Daniel Imfeld <dimfeld>"]
+description = "A CLI tool for managing and executing LLM prompt templates"
+readme = "README.md"
+repository = "https://github.com/dimfeld/promptbox"
+license = "MIT OR Apache-2.0"
+categories = ["command-line-utilities", "template-engine"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -25,3 +31,29 @@ ureq = { version = "2.8.0", features = ["serde_json", "json"] }
 
 [profile.release]
 debug = 1
+
+# The profile that 'cargo dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
+
+# Config for 'cargo dist'
+[workspace.metadata.dist]
+# The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.5.0"
+# CI backends to support
+ci = ["github"]
+# The installers to generate for each app
+installers = ["shell", "powershell", "npm", "homebrew"]
+# A GitHub repo to push Homebrew formulas to
+tap = "dimfeld/homebrew-tap"
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-pc-windows-msvc"]
+# The archive format to use for windows builds (defaults .zip)
+windows-archive = ".tar.gz"
+# The archive format to use for non-windows builds (defaults .tar.xz)
+unix-archive = ".tar.gz"
+# Publish jobs to run in CI
+publish-jobs = ["homebrew"]
+# Publish jobs to run in CI
+pr-run-mode = "plan"
