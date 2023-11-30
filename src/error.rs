@@ -20,4 +20,6 @@ pub enum Error {
     Io,
     #[error(transparent)]
     CmdlineParseFailure(#[from] clap::Error),
+    #[error("Failed to encode tokens")]
+    Tokenizer(String),
 }

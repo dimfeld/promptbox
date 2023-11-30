@@ -6,12 +6,37 @@ use thiserror::Error;
 
 use crate::{
     args::GlobalRunArgs,
+    context::{ContextOptions, ContextOptionsInput, OverflowKeep},
+    ollama,
     option::{overwrite_from_option, overwrite_option_from_option, update_if_none},
 };
 
+#[derive(Debug)]
+pub struct ModelComms {
+    pub host: String,
+    pub module: ModelCommsModule,
+}
+
+#[derive(Debug, Clone, Copy)]
 pub enum ModelCommsModule {
     OpenAi,
     Ollama,
+}
+
+impl ModelComms {
+    pub fn new(host: impl Into<String>, module: ModelCommsModule) -> Self {
+        Self {
+            host: host.into(),
+            module,
+        }
+    }
+
+    pub fn model_context_limit(&self, model_name: &str) -> Result<usize, Report<ModelError>> {
+        match self.module {
+            ModelCommsModule::Ollama => crate::ollama::model_context_limit(&self.host, model_name),
+            ModelCommsModule::OpenAi => Ok(crate::openai::model_context_limit(model_name)),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -30,6 +55,9 @@ pub struct ModelOptions {
     pub max_tokens: Option<u32>,
     /// Alias of short model names to full names, useful for ollama, for example
     pub alias: HashMap<String, String>,
+
+    #[serde(default)]
+    pub context: ContextOptions,
 }
 
 const DEFAULT_MODEL: &str = "gpt-3.5-turbo";
@@ -50,6 +78,7 @@ impl Default for ModelOptions {
             presence_penalty: None,
             stop: Vec::new(),
             max_tokens: None,
+            context: ContextOptions::default(),
             alias: HashMap::new(),
         }
     }
@@ -61,6 +90,9 @@ impl ModelOptions {
         overwrite_option_from_option(&mut self.lm_studio_host, &args.lm_studio_host);
         overwrite_option_from_option(&mut self.ollama_host, &args.ollama_host);
         overwrite_from_option(&mut self.temperature, &args.temperature);
+        overwrite_option_from_option(&mut self.format, &args.format);
+        overwrite_from_option(&mut self.context.keep, &args.overflow_keep);
+        overwrite_option_from_option(&mut self.context.limit, &args.context_limit);
 
         // Always overwrite this since there's no other way to set the key.
         self.openai_key = args.openai_key.clone();
@@ -70,22 +102,19 @@ impl ModelOptions {
         self.alias.get(&self.model).unwrap_or(&self.model)
     }
 
-    pub fn api_host(&self) -> (&str, ModelCommsModule) {
+    pub fn api_host(&self) -> ModelComms {
         let model = self.full_model_name();
         if model.starts_with("gpt-4") || model.starts_with("gpt-3.5-") {
-            (crate::openai::OPENAI_HOST, ModelCommsModule::OpenAi)
+            ModelComms::new(crate::openai::OPENAI_HOST, ModelCommsModule::OpenAi)
         } else if model == "lm-studio" {
             let host = self
                 .lm_studio_host
                 .as_deref()
                 .unwrap_or("http://localhost:1234");
-            (host, ModelCommsModule::OpenAi)
+            ModelComms::new(host, ModelCommsModule::OpenAi)
         } else {
-            let host = self
-                .ollama_host
-                .as_deref()
-                .unwrap_or("http://localhost:11434");
-            (host, ModelCommsModule::Ollama)
+            let host = self.ollama_host.as_deref().unwrap_or(ollama::DEFAULT_HOST);
+            ModelComms::new(host, ModelCommsModule::Ollama)
         }
     }
 
@@ -108,6 +137,24 @@ impl ModelOptions {
             }
         }
     }
+
+    /// Get the context size limit for a model. This may do a network request for Ollama models.
+    pub fn context_limit(&self) -> Result<Option<usize>, Report<ModelError>> {
+        let model = self.full_model_name();
+
+        if model == "lm-studio" {
+            // LM Studio manages this itself and doesn't expose this info via its API.
+            return Ok(None);
+        }
+
+        let comms = self.api_host();
+        let limit = comms.model_context_limit(model)?;
+
+        Ok(Some(std::cmp::min(
+            limit,
+            self.context.limit.unwrap_or(usize::MAX),
+        )))
+    }
 }
 
 impl From<ModelOptionsInput> for ModelOptions {
@@ -127,6 +174,7 @@ impl From<ModelOptionsInput> for ModelOptions {
             stop: value.stop.unwrap_or_default(),
             max_tokens: value.max_tokens,
             alias: value.alias,
+            context: value.context.into(),
         }
     }
 }
@@ -164,6 +212,9 @@ pub struct ModelOptionsInput {
     /// Alias of short model names to full names, useful for ollama, for example
     #[serde(default)]
     pub alias: HashMap<String, String>,
+
+    #[serde(default)]
+    pub context: ContextOptionsInput,
 }
 
 impl ModelOptionsInput {
@@ -180,6 +231,8 @@ impl ModelOptionsInput {
         update_if_none(&mut self.presence_penalty, &other.presence_penalty);
         update_if_none(&mut self.stop, &other.stop);
         update_if_none(&mut self.max_tokens, &other.max_tokens);
+
+        self.context.merge_defaults(&other.context);
 
         for (key, value) in &other.alias {
             if !self.alias.contains_key(key) {
@@ -215,7 +268,7 @@ pub fn send_model_request(
     system: &str,
     message_tx: flume::Sender<String>,
 ) -> Result<(), Report<ModelError>> {
-    let (_, module) = options.api_host();
+    let ModelComms { module, .. } = options.api_host();
     let system = if system.is_empty() {
         None
     } else {

@@ -17,6 +17,7 @@ use crate::model::send_model_request;
 
 mod args;
 mod config;
+mod context;
 mod error;
 mod global_config;
 mod model;
