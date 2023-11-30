@@ -44,7 +44,7 @@ impl From<ContextOptionsInput> for ContextOptions {
 }
 
 impl ContextOptions {
-    pub fn truncate_at<'a>(&self, input: &'a str, encoding: Encoding) -> &'a str {
+    pub fn truncate_at<'a>(&self, input: &'a str, encoding: &Encoding) -> &'a str {
         let Some(limit) = self.limit else {
             return input;
         };

@@ -31,7 +31,7 @@ mod tests;
 fn render_template(
     parser: &liquid::Parser,
     template_path: &Path,
-    template: String,
+    template: &str,
     context: &liquid::Object,
 ) -> Result<String, Report<Error>> {
     let parsed = parser
@@ -79,14 +79,6 @@ fn generate_template(
     };
 
     let mut extra = std::mem::take(&mut args.extra_prompt);
-    //     vec![]
-    // } else {
-    //
-    //     format!(
-    //         "{template}\n\n{extra}",
-    //         extra = args.extra_prompt.join("\n\n")
-    //     )
-    // };
 
     let stdin = std::io::stdin();
     if !stdin.is_terminal() {
@@ -118,15 +110,34 @@ fn generate_template(
         .build()
         .expect("failed to build parser");
 
-    let prompt = render_template(&parser, &template_path, template, &template_context)
+    let mut prompt = render_template(&parser, &template_path, &template, &template_context)
         .attach_printable("Rendering template")
         .attach_printable_lazy(|| template_path.display().to_string())?;
     let system_prompt = if let Some((system_path, system_template)) = system {
-        render_template(&parser, &system_path, system_template, &template_context)
+        render_template(&parser, &system_path, &system_template, &template_context)
             .attach_printable("Rendering system template")
             .attach_printable_lazy(|| system_path.display().to_string())?
     } else {
         String::new()
+    };
+
+    let context_limit = model_options
+        .context_limit()
+        .change_context(Error::PreparePrompt)?;
+
+    if let Some(context_limit) = context_limit {
+        let encoded = context::encode(&prompt).change_context(Error::PreparePrompt)?;
+        if encoded.len() > context_limit {
+            if model_options.context.trim_args.is_empty() {
+                // trim from the entire context
+                prompt = model_options
+                    .context
+                    .truncate_at(&prompt, &encoded)
+                    .to_string();
+            } else {
+                // trim from specific arguments and rerender
+            }
+        }
     };
 
     Ok((args, model_options, prompt, system_prompt))

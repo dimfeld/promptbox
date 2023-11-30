@@ -14,6 +14,8 @@ pub enum Error {
     EmptyTemplate,
     #[error("Failed to parse arguments")]
     ArgParseFailure,
+    #[error("Encountered an error preparinhg the prompt")]
+    PreparePrompt,
     #[error("Encountered an error running the prompt")]
     RunPrompt,
     #[error("Failed reading input")]
