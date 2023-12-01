@@ -59,8 +59,12 @@ pub enum ArrayTrimPriority {
     Equal,
 }
 
-#[derive(Serialize, Deserialize, Default, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ContextOptions {
+    /// How much space in the context to reserve for the generated output.
+    /// Defaults to 256 tokens. This count is subtracted from `limit` to calculate the
+    /// prompt context limit.
+    pub reserve_output: usize,
     /// Set a lower context size limit for a model.
     pub limit: Option<usize>,
     /// Which side of the context to keep when trimming.
@@ -80,6 +84,19 @@ impl From<ContextOptionsInput> for ContextOptions {
             keep: value.keep.unwrap_or_default(),
             trim_args: value.trim_args,
             array_priority: value.array_priority.unwrap_or_default(),
+            reserve_output: value.reserve_output.unwrap_or(256),
+        }
+    }
+}
+
+impl Default for ContextOptions {
+    fn default() -> Self {
+        Self {
+            limit: None,
+            keep: OverflowKeep::default(),
+            trim_args: vec![],
+            array_priority: ArrayTrimPriority::default(),
+            reserve_output: 256,
         }
     }
 }
@@ -89,6 +106,10 @@ impl From<ContextOptionsInput> for ContextOptions {
 pub struct ContextOptionsInput {
     /// Set a lower context size limit for a model.
     pub limit: Option<usize>,
+    /// How much space in the context to reserve for the generated output.
+    /// Defaults to 256 tokens. This count is subtracted from `limit` to calculate the
+    /// prompt context limit.
+    pub reserve_output: Option<usize>,
     /// Which side of the context to keep when we have to drop some content
     pub keep: Option<OverflowKeep>,
     /// Which arguments to drop content from when the context is too large.
@@ -104,6 +125,7 @@ impl ContextOptionsInput {
         update_if_none(&mut self.limit, &other.limit);
         update_if_none(&mut self.keep, &other.keep);
         update_if_none(&mut self.array_priority, &other.array_priority);
+        update_if_none(&mut self.reserve_output, &other.reserve_output);
 
         if !other.trim_args.is_empty() {
             self.trim_args = other.trim_args.clone();
@@ -337,6 +359,7 @@ mod test {
                 model: "gpt-3.5-turbo".to_string(),
                 context: ContextOptions {
                     limit: Some(limit),
+                    reserve_output: 0,
                     ..Default::default()
                 },
                 ..Default::default()
@@ -504,6 +527,7 @@ mod test {
                     keep: OverflowKeep::Start,
                     trim_args: vec!["test".to_string()],
                     array_priority: ArrayTrimPriority::First,
+                    reserve_output: 0,
                 },
                 &mut args,
             )
@@ -544,6 +568,7 @@ mod test {
                     keep: OverflowKeep::Start,
                     trim_args: vec!["test".to_string()],
                     array_priority: ArrayTrimPriority::First,
+                    reserve_output: 0,
                 },
                 &mut args,
             )
@@ -584,6 +609,7 @@ mod test {
                     keep: OverflowKeep::Start,
                     trim_args: vec!["test".to_string()],
                     array_priority: ArrayTrimPriority::First,
+                    reserve_output: 0,
                 },
                 &mut args,
             )
@@ -624,6 +650,7 @@ mod test {
                     keep: OverflowKeep::Start,
                     trim_args: vec!["test".to_string()],
                     array_priority: ArrayTrimPriority::First,
+                    reserve_output: 0,
                 },
                 &mut args,
             )
@@ -665,6 +692,7 @@ mod test {
                     keep: OverflowKeep::Start,
                     trim_args: vec!["test".to_string()],
                     array_priority: ArrayTrimPriority::Last,
+                    reserve_output: 0,
                 },
                 &mut args,
             )
@@ -705,6 +733,7 @@ mod test {
                     keep: OverflowKeep::Start,
                     trim_args: vec!["test".to_string()],
                     array_priority: ArrayTrimPriority::Equal,
+                    reserve_output: 0,
                 },
                 &mut args,
             )

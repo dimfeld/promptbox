@@ -6,7 +6,8 @@ use thiserror::Error;
 
 use crate::{
     args::GlobalRunArgs,
-    context::{ContextOptions, ContextOptionsInput, OverflowKeep},
+    context::{ContextOptions, ContextOptionsInput},
+    error::Error,
     ollama,
     option::{overwrite_from_option, overwrite_option_from_option, update_if_none},
 };
@@ -93,6 +94,10 @@ impl ModelOptions {
         overwrite_option_from_option(&mut self.format, &args.format);
         overwrite_from_option(&mut self.context.keep, &args.overflow_keep);
         overwrite_option_from_option(&mut self.context.limit, &args.context_limit);
+        overwrite_from_option(
+            &mut self.context.reserve_output,
+            &args.reserve_output_context,
+        );
 
         // Always overwrite this since there's no other way to set the key.
         self.openai_key = args.openai_key.clone();
@@ -138,8 +143,8 @@ impl ModelOptions {
         }
     }
 
-    /// Get the context size limit for a model. This may do a network request for Ollama models.
-    pub fn context_limit(&self) -> Result<Option<usize>, Report<ModelError>> {
+    /// Get the input context size limit for a model. This may do a network request for Ollama models.
+    pub fn context_limit(&self) -> Result<Option<usize>, Report<Error>> {
         let model = self.full_model_name();
 
         if model == "lm-studio" {
@@ -148,12 +153,19 @@ impl ModelOptions {
         }
 
         let comms = self.api_host();
-        let limit = comms.model_context_limit(model)?;
+        let limit = comms
+            .model_context_limit(model)
+            .change_context(Error::ContextLimit)?;
 
-        Ok(Some(std::cmp::min(
-            limit,
-            self.context.limit.unwrap_or(usize::MAX),
-        )))
+        let limit = std::cmp::min(limit, self.context.limit.unwrap_or(usize::MAX));
+
+        if limit <= (self.context.reserve_output + 1) {
+            return Err(Report::new(Error::ContextLimit)).attach_printable(
+                "The context size does not leave enough space for the reserved output size.",
+            );
+        }
+
+        Ok(Some(limit - self.context.reserve_output))
     }
 }
 
@@ -283,5 +295,41 @@ pub fn send_model_request(
         ModelCommsModule::Ollama => {
             crate::ollama::send_request(options, prompt, system, message_tx)
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn create_options(limit: Option<usize>, reserve_output: usize) -> ModelOptions {
+        ModelOptions {
+            model: "gpt-3.5-turbo-16k".to_string(),
+            context: ContextOptions {
+                limit,
+                reserve_output,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn limit_smaller_than_model() {
+        let options = create_options(Some(10), 5);
+        assert_eq!(options.context_limit().unwrap(), Some(5));
+    }
+
+    #[test]
+    fn limit_larger_than_model() {
+        let options = create_options(Some(10485760), 5);
+        assert_eq!(options.context_limit().unwrap(), Some(16385 - 5));
+    }
+
+    #[test]
+    fn not_enough_reserved_output() {
+        let options = create_options(Some(20), 20);
+        let err = options.context_limit().unwrap_err();
+        assert!(matches!(err.current_context(), Error::ContextLimit));
     }
 }

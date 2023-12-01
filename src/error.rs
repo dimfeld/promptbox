@@ -18,6 +18,8 @@ pub enum Error {
     PreparePrompt,
     #[error("Encountered an error running the prompt")]
     RunPrompt,
+    #[error("Failed to calculate context limit")]
+    ContextLimit,
     #[error("Failed reading input")]
     Io,
     #[error(transparent)]

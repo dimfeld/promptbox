@@ -337,6 +337,7 @@ optvalue
         );
 
         assert_eq!(options.context.limit, Some(384));
+        assert_eq!(options.context.reserve_output, Some(12));
         assert_eq!(
             options.context.keep,
             Some(crate::context::OverflowKeep::End)

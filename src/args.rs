@@ -86,6 +86,11 @@ pub struct GlobalRunArgs {
     #[arg(long)]
     pub context_limit: Option<usize>,
 
+    /// Make sure that the prompt is short enough to allow this many tokens to be generated.
+    /// Default is 256.
+    #[arg(long)]
+    pub reserve_output_context: Option<usize>,
+
     /// Extra strings to add to the end of the prompt.
     pub extra_prompt: Vec<String>,
 }

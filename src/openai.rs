@@ -138,7 +138,7 @@ pub fn send_completion_request(options: &ModelOptions, prompt: &str) -> Result<(
 pub fn model_context_limit(model_name: &str) -> usize {
     // This will all have to be updated once the preview models are productionized.
     if model_name.starts_with("gpt-4") {
-        if model_name.starts_with("gpt-4-32k-") {
+        if model_name.starts_with("gpt-4-32k") {
             32768
         } else if model_name.ends_with("preview") {
             128000
@@ -150,5 +150,26 @@ pub fn model_context_limit(model_name: &str) -> usize {
         16385
     } else {
         4096
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::model_context_limit;
+
+    /// Check against a bunch of real models to make sure the logic is right
+    #[test]
+    fn model_context_values() {
+        assert_eq!(model_context_limit("gpt-3.5-turbo"), 4096);
+        assert_eq!(model_context_limit("gpt-3.5-turbo-16k"), 16385);
+        assert_eq!(model_context_limit("gpt-3.5-turbo-1106"), 16385);
+        assert_eq!(model_context_limit("gpt-3.5-turbo-instruct"), 4096);
+        assert_eq!(model_context_limit("gpt-3.5-turbo-0613"), 4096);
+        assert_eq!(model_context_limit("gpt-4-1106-preview"), 128000);
+        assert_eq!(model_context_limit("gpt-4-vision-preview"), 128000);
+        assert_eq!(model_context_limit("gpt-4"), 8192);
+        assert_eq!(model_context_limit("gpt-4-0613"), 8192);
+        assert_eq!(model_context_limit("gpt-4-32k"), 32768);
+        assert_eq!(model_context_limit("gpt-4-32k-0613"), 32768);
     }
 }

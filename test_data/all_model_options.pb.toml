@@ -19,6 +19,7 @@ llama2 = "llama2:456"
 
 [model.context]
 limit = 384
+reserve_output = 12
 keep = "end"
 trim_args = ["a", "b"]
 array_priority = "equal"
