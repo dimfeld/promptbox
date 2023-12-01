@@ -320,7 +320,6 @@ mod test {
     // Calculated from the three texts together
     const TOTAL_TOKENS: usize = 23;
 
-    #[cfg(feature = "test-ollama")]
     mod enforce_context_limit {
         use std::path::PathBuf;
 
@@ -333,7 +332,7 @@ mod test {
 
         fn init_test(limit: usize) -> (ModelOptions, liquid::Object, liquid::Parser, String) {
             let model_options = ModelOptions {
-                model: "mistral:7b-instruct-q5_K_M".to_string(),
+                model: "gpt-3.5-turbo".to_string(),
                 context: ContextOptions {
                     limit: Some(limit),
                     ..Default::default()
