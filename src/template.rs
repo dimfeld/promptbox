@@ -364,7 +364,10 @@ test1.txt: test1
             let result = generate_template(base_dir("normal"), "normal".to_string(), cmdline);
             let err = result.expect_err("should have been an error");
             println!("{err:#?}");
-            assert!(matches!(err.current_context(), Error::ArgParseFailure));
+            assert!(matches!(
+                err.current_context(),
+                Error::CmdlineParseFailure(_)
+            ));
         }
 
         #[test]
@@ -399,9 +402,13 @@ test1.txt: test1
             ]);
 
             let result = generate_template(base_dir("normal"), "normal".to_string(), cmdline);
+            println!("{result:#?}");
             let err = result.expect_err("should have been an error");
             println!("{err:#?}");
-            assert!(matches!(err.current_context(), Error::ArgParseFailure));
+            assert!(matches!(
+                err.current_context(),
+                Error::CmdlineParseFailure(_)
+            ));
         }
 
         #[test]
@@ -436,7 +443,10 @@ test1.txt: test1
             let result = generate_template(base_dir("normal"), "normal".to_string(), cmdline);
             let err = result.expect_err("should have been an error");
             println!("{err:#?}");
-            assert!(matches!(err.current_context(), Error::ArgParseFailure));
+            assert!(matches!(
+                err.current_context(),
+                Error::CmdlineParseFailure(_)
+            ));
         }
 
         #[test]
@@ -469,7 +479,10 @@ test1.txt: test1
             let result = generate_template(base_dir("normal"), "normal".to_string(), cmdline);
             let err = result.expect_err("should have been an error");
             println!("{err:#?}");
-            assert!(matches!(err.current_context(), Error::ArgParseFailure));
+            assert!(matches!(
+                err.current_context(),
+                Error::CmdlineParseFailure(_)
+            ));
         }
     }
 }
