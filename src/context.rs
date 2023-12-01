@@ -122,12 +122,12 @@ fn truncate_at<'a>(
     match keep {
         OverflowKeep::Start => {
             let end = encoding.get_offsets()[limit - 1];
-            &input[0..end.1].trim()
+            &input[0..end.1].trim_end()
         }
         OverflowKeep::End => {
             let start_index = encoding.len() - limit;
             let start = encoding.get_offsets()[start_index];
-            &input[start.0..].trim()
+            &input[start.0..].trim_start()
         }
     }
 }
@@ -319,6 +319,120 @@ mod test {
     const SAMPLE_TEXT_3: &str = "Testing testers test";
     // Calculated from the three texts together
     const TOTAL_TOKENS: usize = 23;
+
+    #[cfg(feature = "test-ollama")]
+    mod enforce_context_limit {
+        use std::path::PathBuf;
+
+        use liquid::{
+            object,
+            partials::{InMemorySource, LazyCompiler},
+        };
+
+        use super::*;
+
+        fn init_test(limit: usize) -> (ModelOptions, liquid::Object, liquid::Parser, String) {
+            let model_options = ModelOptions {
+                model: "mistral:7b-instruct-q5_K_M".to_string(),
+                context: ContextOptions {
+                    limit: Some(limit),
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+
+            let template_context = object!({
+                "title": "My blog",
+                "extra": "Some blog post with a lot of content to summarize"
+            });
+
+            let parser = liquid::ParserBuilder::<LazyCompiler<InMemorySource>>::default()
+                .stdlib()
+                .build()
+                .expect("failed to build parser");
+
+            let initial_render = parser
+                .parse(TEST_TEMPLATE)
+                .unwrap()
+                .render(&template_context)
+                .unwrap();
+
+            (model_options, template_context, parser, initial_render)
+        }
+
+        const TEST_TEMPLATE: &str = r##"
+            This is a document to summarize titled {{title}}.
+
+            {{extra}}
+
+            The summary is:
+            "##;
+
+        #[test]
+        fn below_limit() {
+            let (options, context, parser, initial_render) = init_test(2048);
+
+            let output = enforce_context_limit(
+                &options,
+                &parser,
+                &PathBuf::from("test"),
+                TEST_TEMPLATE,
+                context,
+                initial_render.clone(),
+            )
+            .unwrap();
+
+            assert_eq!(output, initial_render);
+        }
+
+        #[test]
+        fn above_limit_with_trim_args() {
+            let (mut options, context, parser, initial_render) = init_test(33);
+
+            options.context.trim_args = vec!["extra".to_string()];
+
+            let output = enforce_context_limit(
+                &options,
+                &parser,
+                &PathBuf::from("test"),
+                TEST_TEMPLATE,
+                context,
+                initial_render.clone(),
+            )
+            .unwrap();
+
+            let expected_context = object!({
+                "title": "My blog",
+                "extra": "Some blog post with a lot of"
+            });
+
+            let expected_render = parser
+                .parse(TEST_TEMPLATE)
+                .unwrap()
+                .render(&expected_context)
+                .unwrap();
+
+            assert_eq!(output, expected_render);
+        }
+
+        #[test]
+        fn above_limit_without_trim_args() {
+            let (mut options, context, parser, initial_render) = init_test(30);
+            options.context.keep = OverflowKeep::End;
+
+            let output = enforce_context_limit(
+                &options,
+                &parser,
+                &PathBuf::from("test"),
+                TEST_TEMPLATE,
+                context,
+                initial_render.clone(),
+            )
+            .unwrap();
+
+            assert_eq!(output, &initial_render[32..]);
+        }
+    }
 
     mod truncate_at {
         use super::*;

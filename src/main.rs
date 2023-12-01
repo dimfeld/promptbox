@@ -1,8 +1,4 @@
-use std::{
-    ffi::OsString,
-    io::{IsTerminal, Write},
-    path::PathBuf,
-};
+use std::{ffi::OsString, io::IsTerminal, path::PathBuf};
 
 use args::{parse_main_args, parse_template_args, FoundCommand, GlobalRunArgs};
 use config::Config;
@@ -113,6 +109,7 @@ fn run_template(
     base_dir: PathBuf,
     template: String,
     args: Vec<OsString>,
+    mut output: impl std::io::Write + Send + 'static,
 ) -> Result<(), Report<Error>> {
     let (args, model_options, prompt, system) = generate_template(base_dir, template, args)?;
 
@@ -133,19 +130,19 @@ fn run_template(
 
     let (message_tx, message_rx) = flume::bounded(32);
     let print_thread = std::thread::spawn(move || {
-        let mut stdout = std::io::stdout();
         for message in message_rx {
-            print!("{}", message);
-            stdout.flush().ok();
+            write!(output, "{}", message)?;
+            output.flush()?;
         }
 
-        println!("");
+        writeln!(output, "")?;
+        Ok::<(), std::io::Error>(())
     });
 
     send_model_request(&model_options, &prompt, &system, message_tx)
         .change_context(Error::RunPrompt)?;
 
-    print_thread.join().unwrap();
+    print_thread.join().unwrap().ok();
 
     Ok(())
 }
@@ -154,7 +151,10 @@ fn run(base_dir: PathBuf, cmdline: Vec<OsString>) -> Result<(), Report<Error>> {
     let args = parse_main_args(cmdline).map_err(Error::CmdlineParseFailure)?;
 
     match args {
-        FoundCommand::Run { template, args } => run_template(base_dir, template, args)?,
+        FoundCommand::Run { template, args } => {
+            let stdout = std::io::stdout();
+            run_template(base_dir, template, args, stdout)?;
+        }
         FoundCommand::Other(_cli) => {
             todo!()
         }
