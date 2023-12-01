@@ -72,7 +72,7 @@ pub struct ContextOptions {
     /// Which arguments to drop content from when the context is too large.
     /// If empty, content will be removed from the entire rendered context.
     pub trim_args: Vec<String>,
-    /// When trimming array arguments, whether to trim from the first arguments,
+    /// When trimming array arguments, whether to preserve the first arguments,
     /// the last arguments, or try to trim equally.
     pub array_priority: ArrayTrimPriority,
 }
