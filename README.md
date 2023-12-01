@@ -98,6 +98,7 @@ PromptBox supports a few model hosts, and uses a very simple logic to choose the
 
 Models can use aliases as well. In either the template or a configuration file, you can add an `model.alias` section.
 
+
 ```toml
 [model.alias]
 phind = "phind-codellama:34b-v2-q5_K_M"
@@ -106,17 +107,49 @@ deepseek = "deepseek-coder:7b"
 
 These model aliases can then be used in place of the actual model name.
 
+## Context Length Management
+
+When your prompts and their input start to get large, there are a few options to manage the context length.
+
+```toml
+[model.context]
+# Override the context length limit from the model. Usually you can omit this unless you want to
+# artificially decrease the context length to save time, money, etc.
+limit = 384
+
+# Make sure the context has enough room for this many tokens of output.
+# This defaults to 256 if not otherwise specified.
+# The prompt will contain roughly `limit - reserve_output` tokens.
+reserve_output = 256
+
+# When trimming context, should it keep the "start" or the "end"
+keep = "start"
+# keep = "end"
+
+# The names of arguments to trim context from. If omitted, the entire prompt is trimmed to fit.
+trim_args = ["extra", "files"]
+
+# When trimming array arguments, whether to preserve the first arguments,
+# the last arguments, or try to trim equally.
+array_priority = "first"
+# array_priority = "last"
+# array_priority = "equal"
+```
+
+Right now, the Llama 2 tokenizer is used regardless of the model chosen. This won't give exact results for
+every model, but will be close enough for most cases.
+
 # Configuration Files
 
-Each directory of templates contains a configuration file, which can set default model options. Config files are read
+Each directory of templates contains a configuration file, which can set default model options. Configuration files are read
 from the current directory up through the parent directories. 
 
-In each directory searched, Promptbox will look for a configuration file in that directory and in a
+In each directory searched, PromptBox will look for a configuration file in that directory and in a
 `promptbox` subdirectory.
 
 The global configuration directory such as `.config/promptbox/promptbox.toml` is read as well.
 
-A configuration file inherits settings from the config files in its parent directories as well, for those options that
+A configuration file inherits settings from the configuration files in its parent directories as well, for those options that
 it does not set itself. All settings in a configuration file are optional.
 
 ```toml
