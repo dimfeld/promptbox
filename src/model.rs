@@ -143,7 +143,9 @@ impl ModelOptions {
         }
     }
 
-    /// Get the input context size limit for a model. This may do a network request for Ollama models.
+    /// Get the input context size limit for a model.
+    /// The returned value is the total context size minus `self.context.reserve_output`.
+    /// This may do a network request for Ollama models.
     pub fn context_limit(&self) -> Result<Option<usize>, Report<Error>> {
         let model = self.full_model_name();
 
