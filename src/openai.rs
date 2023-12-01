@@ -4,7 +4,7 @@ use error_stack::{Report, ResultExt};
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::model::{map_model_response_err, ModelError, ModelOptions};
+use crate::model::{map_model_response_err, ModelComms, ModelError, ModelOptions};
 
 pub const OPENAI_HOST: &str = "https://api.openai.com";
 
@@ -30,7 +30,7 @@ struct ChatCompletion {
 }
 
 fn create_base_request(config: &ModelOptions, path: &str) -> ureq::Request {
-    let (host, _) = config.api_host();
+    let ModelComms { host, .. } = config.api_host();
     let url = format!("{host}/{path}");
 
     let request = ureq::post(&url);
@@ -133,4 +133,43 @@ pub fn send_completion_request(options: &ModelOptions, prompt: &str) -> Result<(
     let response: serde_json::Value = create_base_request(&options, "v1/completions")
         .send_json(body)?
         .into_json()?;
+}
+
+pub fn model_context_limit(model_name: &str) -> usize {
+    // This will all have to be updated once the preview models are productionized.
+    if model_name.starts_with("gpt-4") {
+        if model_name.starts_with("gpt-4-32k") {
+            32768
+        } else if model_name.ends_with("preview") {
+            128000
+        } else {
+            8192
+        }
+    } else if model_name.contains("-16k") || model_name == "gpt-3.5-turbo-1106" {
+        // gpt-3.5-turbo will also be 16385 on December 11, 2023
+        16385
+    } else {
+        4096
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::model_context_limit;
+
+    /// Check against a bunch of real models to make sure the logic is right
+    #[test]
+    fn model_context_values() {
+        assert_eq!(model_context_limit("gpt-3.5-turbo"), 4096);
+        assert_eq!(model_context_limit("gpt-3.5-turbo-16k"), 16385);
+        assert_eq!(model_context_limit("gpt-3.5-turbo-1106"), 16385);
+        assert_eq!(model_context_limit("gpt-3.5-turbo-instruct"), 4096);
+        assert_eq!(model_context_limit("gpt-3.5-turbo-0613"), 4096);
+        assert_eq!(model_context_limit("gpt-4-1106-preview"), 128000);
+        assert_eq!(model_context_limit("gpt-4-vision-preview"), 128000);
+        assert_eq!(model_context_limit("gpt-4"), 8192);
+        assert_eq!(model_context_limit("gpt-4-0613"), 8192);
+        assert_eq!(model_context_limit("gpt-4-32k"), 32768);
+        assert_eq!(model_context_limit("gpt-4-32k-0613"), 32768);
+    }
 }

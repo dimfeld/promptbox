@@ -1,8 +1,4 @@
-use std::{
-    ffi::OsString,
-    io::{IsTerminal, Write},
-    path::{Path, PathBuf},
-};
+use std::{ffi::OsString, io::IsTerminal, path::PathBuf};
 
 use args::{parse_main_args, parse_template_args, FoundCommand, GlobalRunArgs};
 use config::Config;
@@ -11,12 +7,13 @@ use error_stack::{Report, ResultExt};
 use global_config::load_dotenv;
 use liquid::partials::{InMemorySource, LazyCompiler};
 use model::ModelOptions;
-use template::ParsedTemplate;
+use template::{render_template, template_references_extra, ParsedTemplate};
 
 use crate::model::send_model_request;
 
 mod args;
 mod config;
+mod context;
 mod error;
 mod global_config;
 mod model;
@@ -26,30 +23,6 @@ mod option;
 mod template;
 #[cfg(test)]
 mod tests;
-
-fn render_template(
-    parser: &liquid::Parser,
-    template_path: &Path,
-    template: String,
-    context: &liquid::Object,
-) -> Result<String, Report<Error>> {
-    let parsed = parser
-        .parse(&template)
-        .change_context(Error::ParseTemplate)
-        .attach_printable_lazy(|| template_path.display().to_string())?;
-
-    let prompt = parsed
-        .render(&context)
-        .change_context(Error::ParseTemplate)
-        .attach_printable_lazy(|| template_path.display().to_string())?;
-
-    Ok(prompt)
-}
-
-fn template_references_extra(template: &str) -> bool {
-    let extra_regex = regex::Regex::new(r##"\{\{-?\s*extra\s*-?\}\}"##).unwrap();
-    extra_regex.is_match(template)
-}
 
 fn generate_template(
     base_dir: PathBuf,
@@ -78,14 +51,6 @@ fn generate_template(
     };
 
     let mut extra = std::mem::take(&mut args.extra_prompt);
-    //     vec![]
-    // } else {
-    //
-    //     format!(
-    //         "{template}\n\n{extra}",
-    //         extra = args.extra_prompt.join("\n\n")
-    //     )
-    // };
 
     let stdin = std::io::stdin();
     if !stdin.is_terminal() {
@@ -117,16 +82,25 @@ fn generate_template(
         .build()
         .expect("failed to build parser");
 
-    let prompt = render_template(&parser, &template_path, template, &template_context)
+    let prompt = render_template(&parser, &template_path, &template, &template_context)
         .attach_printable("Rendering template")
         .attach_printable_lazy(|| template_path.display().to_string())?;
     let system_prompt = if let Some((system_path, system_template)) = system {
-        render_template(&parser, &system_path, system_template, &template_context)
+        render_template(&parser, &system_path, &system_template, &template_context)
             .attach_printable("Rendering system template")
             .attach_printable_lazy(|| system_path.display().to_string())?
     } else {
         String::new()
     };
+
+    let prompt = context::enforce_context_limit(
+        &model_options,
+        &parser,
+        &template_path,
+        &template,
+        template_context,
+        prompt,
+    )?;
 
     Ok((args, model_options, prompt, system_prompt))
 }
@@ -135,6 +109,7 @@ fn run_template(
     base_dir: PathBuf,
     template: String,
     args: Vec<OsString>,
+    mut output: impl std::io::Write + Send + 'static,
 ) -> Result<(), Report<Error>> {
     let (args, model_options, prompt, system) = generate_template(base_dir, template, args)?;
 
@@ -155,19 +130,19 @@ fn run_template(
 
     let (message_tx, message_rx) = flume::bounded(32);
     let print_thread = std::thread::spawn(move || {
-        let mut stdout = std::io::stdout();
         for message in message_rx {
-            print!("{}", message);
-            stdout.flush().ok();
+            write!(output, "{}", message)?;
+            output.flush()?;
         }
 
-        println!("");
+        writeln!(output, "")?;
+        Ok::<(), std::io::Error>(())
     });
 
     send_model_request(&model_options, &prompt, &system, message_tx)
         .change_context(Error::RunPrompt)?;
 
-    print_thread.join().unwrap();
+    print_thread.join().unwrap().ok();
 
     Ok(())
 }
@@ -176,8 +151,11 @@ fn run(base_dir: PathBuf, cmdline: Vec<OsString>) -> Result<(), Report<Error>> {
     let args = parse_main_args(cmdline).map_err(Error::CmdlineParseFailure)?;
 
     match args {
-        FoundCommand::Run { template, args } => run_template(base_dir, template, args)?,
-        FoundCommand::Other(cli) => {
+        FoundCommand::Run { template, args } => {
+            let stdout = std::io::stdout();
+            run_template(base_dir, template, args, stdout)?;
+        }
+        FoundCommand::Other(_cli) => {
             todo!()
         }
     }
@@ -195,46 +173,4 @@ fn main() -> Result<(), Report<Error>> {
         std::env::current_dir().unwrap(),
         std::env::args().into_iter().map(OsString::from).collect(),
     )
-}
-
-#[cfg(test)]
-mod test {
-    mod template_references_extra {
-        use crate::template_references_extra;
-
-        #[test]
-        fn basic() {
-            assert_eq!(template_references_extra(" {{extra}} "), true);
-        }
-
-        #[test]
-        fn spaces() {
-            assert_eq!(template_references_extra("{{ extra }}"), true);
-        }
-
-        #[test]
-        fn dashes() {
-            assert_eq!(template_references_extra("{{-extra-}}"), true);
-        }
-
-        #[test]
-        fn dashes_and_spaces() {
-            assert_eq!(template_references_extra("{{- extra -}}"), true);
-        }
-
-        #[test]
-        fn newlines() {
-            assert_eq!(template_references_extra("{{\n\n\textra\n\t}}"), true);
-        }
-
-        #[test]
-        fn notmatch_braces() {
-            assert_eq!(template_references_extra("{extra}}"), false);
-        }
-
-        #[test]
-        fn notmatch() {
-            assert_eq!(template_references_extra("{{bextra}}"), false);
-        }
-    }
 }

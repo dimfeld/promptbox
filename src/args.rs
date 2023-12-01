@@ -9,6 +9,7 @@ use clap::{
 use error_stack::{Report, ResultExt};
 
 use crate::{
+    context::OverflowKeep,
     error::Error,
     model::OutputFormat,
     template::{OptionType, PromptOption, PromptTemplate},
@@ -73,8 +74,22 @@ pub struct GlobalRunArgs {
     pub verbose: bool,
 
     /// Output JSON instead of just text
-    #[arg(long, short)]
-    pub json: Option<OutputFormat>,
+    #[arg(long)]
+    pub format: Option<OutputFormat>,
+
+    /// Set which side of the context to keep when overflowing.
+    /// Defaults to keeping the start.
+    #[arg(long)]
+    pub overflow_keep: Option<OverflowKeep>,
+
+    /// Set a lower context size limit for a model.
+    #[arg(long)]
+    pub context_limit: Option<usize>,
+
+    /// Make sure that the prompt is short enough to allow this many tokens to be generated.
+    /// Default is 256.
+    #[arg(long)]
+    pub reserve_output_context: Option<usize>,
 
     /// Extra strings to add to the end of the prompt.
     pub extra_prompt: Vec<String>,

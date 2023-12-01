@@ -26,8 +26,14 @@ rusqlite_migration = "1.0.2"
 serde = { version = "1.0.190", features = ["derive"] }
 serde_json = "1.0.108"
 thiserror = "1.0.50"
+tokenizers = { version = "0.15.0", features = [ "http" ] }
 toml = "0.8.6"
 ureq = { version = "2.8.0", features = ["serde_json", "json"] }
+
+[features]
+default = []
+# Enable tests that require a running ollama instance with specific models pulled.
+test-ollama = []
 
 [profile.release]
 debug = 1

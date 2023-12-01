@@ -125,10 +125,35 @@ impl ParsedTemplate {
     }
 }
 
+pub fn render_template(
+    parser: &liquid::Parser,
+    template_path: &Path,
+    template: &str,
+    context: &liquid::Object,
+) -> Result<String, Report<Error>> {
+    let parsed = parser
+        .parse(&template)
+        .change_context(Error::ParseTemplate)
+        .attach_printable_lazy(|| template_path.display().to_string())?;
+
+    let prompt = parsed
+        .render(&context)
+        .change_context(Error::ParseTemplate)
+        .attach_printable_lazy(|| template_path.display().to_string())?;
+
+    Ok(prompt)
+}
+
+pub fn template_references_extra(template: &str) -> bool {
+    let extra_regex = regex::Regex::new(r##"\{\{-?\s*extra\s*-?\}\}"##).unwrap();
+    extra_regex.is_match(template)
+}
+
 #[cfg(test)]
 mod tests {
     use std::{ffi::OsString, path::PathBuf};
 
+    use super::ParsedTemplate;
     use crate::{
         error::Error,
         generate_template,
@@ -172,7 +197,7 @@ mod tests {
             "optvalue",
         ]);
 
-        let (args, options, prompt, system) =
+        let (_args, _options, prompt, system) =
             generate_template(PathBuf::from(BASE_DIR), "normal".to_string(), cmdline)
                 .expect("generate_template");
         assert!(system.is_empty());
@@ -272,6 +297,61 @@ optvalue
         ));
     }
 
+    #[test]
+    fn all_model_options() {
+        let template = ParsedTemplate::from_file(
+            "all_model_options",
+            &base_dir(&PathBuf::from("all_model_options.pb.toml")),
+        )
+        .expect("loads successfully")
+        .expect("should find template");
+
+        let options = template.input.model;
+
+        assert_eq!(options.model, Some("abc".to_string()));
+        assert_eq!(
+            options.lm_studio_host,
+            Some("http://localhost:9998".to_string())
+        );
+        assert_eq!(
+            options.ollama_host,
+            Some("http://localhost:9999".to_string())
+        );
+        assert_eq!(options.temperature, Some(0.3));
+        assert_eq!(options.format, Some(crate::model::OutputFormat::JSON));
+        assert_eq!(options.top_p, Some(0.5));
+        assert_eq!(options.top_k, Some(2));
+        assert_eq!(options.frequency_penalty, Some(1.5));
+        assert_eq!(options.presence_penalty, Some(0.5));
+        assert_eq!(options.stop, Some(vec!["a".to_string(), "b".to_string()]));
+        assert_eq!(options.max_tokens, Some(30));
+
+        let mut aliases = options.alias.iter().collect::<Vec<_>>();
+        aliases.sort();
+        assert_eq!(
+            aliases,
+            vec![
+                (&"llama2".to_string(), &"llama2:456".to_string()),
+                (&"mistral".to_string(), &"mistral:123".to_string()),
+            ]
+        );
+
+        assert_eq!(options.context.limit, Some(384));
+        assert_eq!(options.context.reserve_output, Some(12));
+        assert_eq!(
+            options.context.keep,
+            Some(crate::context::OverflowKeep::End)
+        );
+        assert_eq!(
+            options.context.trim_args,
+            vec!["a".to_string(), "b".to_string()]
+        );
+        assert_eq!(
+            options.context.array_priority,
+            Some(crate::context::ArrayTrimPriority::Equal)
+        );
+    }
+
     mod args {
         use super::*;
 
@@ -345,7 +425,10 @@ test1.txt: test1
             let result = generate_template(base_dir("normal"), "normal".to_string(), cmdline);
             let err = result.expect_err("should have been an error");
             println!("{err:#?}");
-            assert!(matches!(err.current_context(), Error::ArgParseFailure));
+            assert!(matches!(
+                err.current_context(),
+                Error::CmdlineParseFailure(_)
+            ));
         }
 
         #[test]
@@ -380,9 +463,13 @@ test1.txt: test1
             ]);
 
             let result = generate_template(base_dir("normal"), "normal".to_string(), cmdline);
+            println!("{result:#?}");
             let err = result.expect_err("should have been an error");
             println!("{err:#?}");
-            assert!(matches!(err.current_context(), Error::ArgParseFailure));
+            assert!(matches!(
+                err.current_context(),
+                Error::CmdlineParseFailure(_)
+            ));
         }
 
         #[test]
@@ -417,7 +504,10 @@ test1.txt: test1
             let result = generate_template(base_dir("normal"), "normal".to_string(), cmdline);
             let err = result.expect_err("should have been an error");
             println!("{err:#?}");
-            assert!(matches!(err.current_context(), Error::ArgParseFailure));
+            assert!(matches!(
+                err.current_context(),
+                Error::CmdlineParseFailure(_)
+            ));
         }
 
         #[test]
@@ -450,7 +540,49 @@ test1.txt: test1
             let result = generate_template(base_dir("normal"), "normal".to_string(), cmdline);
             let err = result.expect_err("should have been an error");
             println!("{err:#?}");
-            assert!(matches!(err.current_context(), Error::ArgParseFailure));
+            assert!(matches!(
+                err.current_context(),
+                Error::CmdlineParseFailure(_)
+            ));
+        }
+    }
+
+    mod template_references_extra {
+        use super::super::template_references_extra;
+
+        #[test]
+        fn basic() {
+            assert_eq!(template_references_extra(" {{extra}} "), true);
+        }
+
+        #[test]
+        fn spaces() {
+            assert_eq!(template_references_extra("{{ extra }}"), true);
+        }
+
+        #[test]
+        fn dashes() {
+            assert_eq!(template_references_extra("{{-extra-}}"), true);
+        }
+
+        #[test]
+        fn dashes_and_spaces() {
+            assert_eq!(template_references_extra("{{- extra -}}"), true);
+        }
+
+        #[test]
+        fn newlines() {
+            assert_eq!(template_references_extra("{{\n\n\textra\n\t}}"), true);
+        }
+
+        #[test]
+        fn notmatch_braces() {
+            assert_eq!(template_references_extra("{extra}}"), false);
+        }
+
+        #[test]
+        fn notmatch() {
+            assert_eq!(template_references_extra("{{bextra}}"), false);
         }
     }
 }
