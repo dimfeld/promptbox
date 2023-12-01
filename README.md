@@ -115,7 +115,7 @@ a few options to better control the trimming behavior.
 ```toml
 [model.context]
 # Override the context length limit from the model. Usually you can omit this unless you
-# want to # artificially decrease the context length to save time, money, etc.
+# want to artificially decrease the context length to save time, money, etc.
 limit = 384
 
 # Make sure the context has enough room for this many tokens of output.
