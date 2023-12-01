@@ -179,7 +179,7 @@ impl From<ModelOptionsInput> for ModelOptions {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum OutputFormat {
     JSON,
@@ -197,6 +197,7 @@ impl FromStr for OutputFormat {
 }
 
 #[derive(Deserialize, Debug, Default, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct ModelOptionsInput {
     pub model: Option<String>,
     pub lm_studio_host: Option<String>,

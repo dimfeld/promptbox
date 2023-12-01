@@ -1,0 +1,24 @@
+template = ""
+
+[model]
+model = "abc"
+lm_studio_host = "http://localhost:9998"
+ollama_host = "http://localhost:9999"
+temperature = 0.3
+format = "json"
+top_p = 0.5
+top_k = 2
+frequency_penalty = 1.5
+presence_penalty = 0.5
+stop = ["a", "b"]
+max_tokens = 30
+
+[model.alias]
+mistral = "mistral:123"
+llama2 = "llama2:456"
+
+[model.context]
+limit = 384
+keep = "end"
+trim_args = ["a", "b"]
+array_priority = "equal"

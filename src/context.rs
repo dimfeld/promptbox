@@ -4,7 +4,7 @@ use clap::ValueEnum;
 use error_stack::{Report, ResultExt};
 use liquid::ValueView;
 use serde::{Deserialize, Serialize};
-use tokenizers::{EncodeInput, Encoding};
+use tokenizers::Encoding;
 
 use crate::{model::ModelOptions, option::update_if_none, Error};
 
@@ -25,9 +25,10 @@ impl Tokenizer {
             .map_err(|e| Error::Tokenizer(e.to_string()))
     }
 
+    #[cfg(test)]
     fn encode_batch<'s>(
         &self,
-        input: Vec<impl Into<EncodeInput<'s>> + Send>,
+        input: Vec<impl Into<tokenizers::EncodeInput<'s>> + Send>,
     ) -> Result<Vec<Encoding>, Error> {
         self.0
             .encode_batch(input, false)
@@ -35,7 +36,7 @@ impl Tokenizer {
     }
 }
 
-#[derive(Serialize, Deserialize, Default, Debug, Clone, Copy, ValueEnum)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum OverflowKeep {
     /// Keep the start of the content
@@ -45,7 +46,7 @@ pub enum OverflowKeep {
     End,
 }
 
-#[derive(Serialize, Deserialize, Default, Debug, Clone, Copy, ValueEnum)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 /// Control how array arguments are trimmed when reducing context overflow.
 pub enum ArrayTrimPriority {
@@ -84,17 +85,18 @@ impl From<ContextOptionsInput> for ContextOptions {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct ContextOptionsInput {
     /// Set a lower context size limit for a model.
-    limit: Option<usize>,
+    pub limit: Option<usize>,
     /// Which side of the context to keep when we have to drop some content
-    keep: Option<OverflowKeep>,
+    pub keep: Option<OverflowKeep>,
     /// Which arguments to drop content from when the context is too large.
     /// If empty, content will be removed from the entire rendered context.
-    trim_args: Vec<String>,
+    pub trim_args: Vec<String>,
     /// When trimming array arguments, whether to trim from the first arguments,
     /// the last arguments, or try to trim equally.
-    array_priority: Option<ArrayTrimPriority>,
+    pub array_priority: Option<ArrayTrimPriority>,
 }
 
 impl ContextOptionsInput {

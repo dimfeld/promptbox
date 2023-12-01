@@ -153,6 +153,7 @@ pub fn template_references_extra(template: &str) -> bool {
 mod tests {
     use std::{ffi::OsString, path::PathBuf};
 
+    use super::ParsedTemplate;
     use crate::{
         error::Error,
         generate_template,
@@ -294,6 +295,60 @@ optvalue
             err.current_context(),
             Error::TemplateContentsNotFound
         ));
+    }
+
+    #[test]
+    fn all_model_options() {
+        let template = ParsedTemplate::from_file(
+            "all_model_options",
+            &base_dir(&PathBuf::from("all_model_options.pb.toml")),
+        )
+        .expect("loads successfully")
+        .expect("should find template");
+
+        let options = template.input.model;
+
+        assert_eq!(options.model, Some("abc".to_string()));
+        assert_eq!(
+            options.lm_studio_host,
+            Some("http://localhost:9998".to_string())
+        );
+        assert_eq!(
+            options.ollama_host,
+            Some("http://localhost:9999".to_string())
+        );
+        assert_eq!(options.temperature, Some(0.3));
+        assert_eq!(options.format, Some(crate::model::OutputFormat::JSON));
+        assert_eq!(options.top_p, Some(0.5));
+        assert_eq!(options.top_k, Some(2));
+        assert_eq!(options.frequency_penalty, Some(1.5));
+        assert_eq!(options.presence_penalty, Some(0.5));
+        assert_eq!(options.stop, Some(vec!["a".to_string(), "b".to_string()]));
+        assert_eq!(options.max_tokens, Some(30));
+
+        let mut aliases = options.alias.iter().collect::<Vec<_>>();
+        aliases.sort();
+        assert_eq!(
+            aliases,
+            vec![
+                (&"llama2".to_string(), &"llama2:456".to_string()),
+                (&"mistral".to_string(), &"mistral:123".to_string()),
+            ]
+        );
+
+        assert_eq!(options.context.limit, Some(384));
+        assert_eq!(
+            options.context.keep,
+            Some(crate::context::OverflowKeep::End)
+        );
+        assert_eq!(
+            options.context.trim_args,
+            vec!["a".to_string(), "b".to_string()]
+        );
+        assert_eq!(
+            options.context.array_priority,
+            Some(crate::context::ArrayTrimPriority::Equal)
+        );
     }
 
     mod args {
