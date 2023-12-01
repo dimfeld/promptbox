@@ -11,7 +11,7 @@ use error_stack::{Report, ResultExt};
 use global_config::load_dotenv;
 use liquid::partials::{InMemorySource, LazyCompiler};
 use model::ModelOptions;
-use template::{render_template, ParsedTemplate};
+use template::{render_template, template_references_extra, ParsedTemplate};
 
 use crate::model::send_model_request;
 
@@ -27,11 +27,6 @@ mod option;
 mod template;
 #[cfg(test)]
 mod tests;
-
-fn template_references_extra(template: &str) -> bool {
-    let extra_regex = regex::Regex::new(r##"\{\{-?\s*extra\s*-?\}\}"##).unwrap();
-    extra_regex.is_match(template)
-}
 
 fn generate_template(
     base_dir: PathBuf,
@@ -178,46 +173,4 @@ fn main() -> Result<(), Report<Error>> {
         std::env::current_dir().unwrap(),
         std::env::args().into_iter().map(OsString::from).collect(),
     )
-}
-
-#[cfg(test)]
-mod test {
-    mod template_references_extra {
-        use crate::template_references_extra;
-
-        #[test]
-        fn basic() {
-            assert_eq!(template_references_extra(" {{extra}} "), true);
-        }
-
-        #[test]
-        fn spaces() {
-            assert_eq!(template_references_extra("{{ extra }}"), true);
-        }
-
-        #[test]
-        fn dashes() {
-            assert_eq!(template_references_extra("{{-extra-}}"), true);
-        }
-
-        #[test]
-        fn dashes_and_spaces() {
-            assert_eq!(template_references_extra("{{- extra -}}"), true);
-        }
-
-        #[test]
-        fn newlines() {
-            assert_eq!(template_references_extra("{{\n\n\textra\n\t}}"), true);
-        }
-
-        #[test]
-        fn notmatch_braces() {
-            assert_eq!(template_references_extra("{extra}}"), false);
-        }
-
-        #[test]
-        fn notmatch() {
-            assert_eq!(template_references_extra("{{bextra}}"), false);
-        }
-    }
 }

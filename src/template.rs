@@ -144,6 +144,11 @@ pub fn render_template(
     Ok(prompt)
 }
 
+pub fn template_references_extra(template: &str) -> bool {
+    let extra_regex = regex::Regex::new(r##"\{\{-?\s*extra\s*-?\}\}"##).unwrap();
+    extra_regex.is_match(template)
+}
+
 #[cfg(test)]
 mod tests {
     use std::{ffi::OsString, path::PathBuf};
@@ -191,7 +196,7 @@ mod tests {
             "optvalue",
         ]);
 
-        let (args, options, prompt, system) =
+        let (_args, _options, prompt, system) =
             generate_template(PathBuf::from(BASE_DIR), "normal".to_string(), cmdline)
                 .expect("generate_template");
         assert!(system.is_empty());
@@ -483,6 +488,45 @@ test1.txt: test1
                 err.current_context(),
                 Error::CmdlineParseFailure(_)
             ));
+        }
+    }
+
+    mod template_references_extra {
+        use super::super::template_references_extra;
+
+        #[test]
+        fn basic() {
+            assert_eq!(template_references_extra(" {{extra}} "), true);
+        }
+
+        #[test]
+        fn spaces() {
+            assert_eq!(template_references_extra("{{ extra }}"), true);
+        }
+
+        #[test]
+        fn dashes() {
+            assert_eq!(template_references_extra("{{-extra-}}"), true);
+        }
+
+        #[test]
+        fn dashes_and_spaces() {
+            assert_eq!(template_references_extra("{{- extra -}}"), true);
+        }
+
+        #[test]
+        fn newlines() {
+            assert_eq!(template_references_extra("{{\n\n\textra\n\t}}"), true);
+        }
+
+        #[test]
+        fn notmatch_braces() {
+            assert_eq!(template_references_extra("{extra}}"), false);
+        }
+
+        #[test]
+        fn notmatch() {
+            assert_eq!(template_references_extra("{{bextra}}"), false);
         }
     }
 }
