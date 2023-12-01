@@ -18,3 +18,97 @@ pub fn update_if_none<T: Clone>(a: &mut Option<T>, b: &Option<T>) {
         *a = b.clone();
     }
 }
+
+#[cfg(test)]
+mod test {
+    mod overwrite_from_option {
+        use super::super::overwrite_from_option;
+        #[test]
+        fn with_some() {
+            let mut a = 1;
+            let b = Some(2);
+            overwrite_from_option(&mut a, &b);
+            assert_eq!(a, 2);
+        }
+
+        #[test]
+        fn with_none() {
+            let mut a = 1;
+            let b = None;
+            overwrite_from_option(&mut a, &b);
+            assert_eq!(a, 1);
+        }
+    }
+
+    mod overwrite_option_from_option {
+        use super::super::overwrite_option_from_option;
+
+        #[test]
+        fn some_with_some() {
+            let mut a = Some(1);
+            let b = Some(2);
+            overwrite_option_from_option(&mut a, &b);
+            assert_eq!(a, Some(2));
+        }
+
+        #[test]
+        fn some_with_none() {
+            let mut a = Some(1);
+            let b = None;
+            overwrite_option_from_option(&mut a, &b);
+            assert_eq!(a, Some(1));
+        }
+
+        #[test]
+        fn none_with_some() {
+            let mut a = None;
+            let b = Some(2);
+            overwrite_option_from_option(&mut a, &b);
+            assert_eq!(a, Some(2));
+        }
+
+        #[test]
+        fn none_with_none() {
+            let mut a: Option<usize> = None;
+            let b = None;
+            overwrite_option_from_option(&mut a, &b);
+            assert_eq!(a, None);
+        }
+    }
+
+    mod update_if_none {
+        use super::super::update_if_none;
+
+        #[test]
+        fn some_with_some() {
+            let mut a = Some(1);
+            let b = Some(2);
+            update_if_none(&mut a, &b);
+            assert_eq!(a, Some(1));
+        }
+
+        #[test]
+        fn some_with_none() {
+            let mut a = Some(1);
+            let b = None;
+            update_if_none(&mut a, &b);
+            assert_eq!(a, Some(1));
+        }
+
+        #[test]
+        fn none_with_some() {
+            let mut a = None;
+            let b = Some(2);
+            update_if_none(&mut a, &b);
+            assert_eq!(a, Some(2));
+        }
+
+        #[test]
+        fn none_with_none() {
+            let mut a: Option<usize> = None;
+            let b = None;
+            update_if_none(&mut a, &b);
+            assert_eq!(a, None);
+        }
+    }
+}
