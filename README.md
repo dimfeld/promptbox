@@ -109,12 +109,13 @@ These model aliases can then be used in place of the actual model name.
 
 ## Context Length Management
 
-When your prompts and their input start to get large, there are a few options to manage the context length.
+When your prompts and their input start to get large, PromptBox will trim them down to fit. There are
+a few options to better control the trimming behavior.
 
 ```toml
 [model.context]
-# Override the context length limit from the model. Usually you can omit this unless you want to
-# artificially decrease the context length to save time, money, etc.
+# Override the context length limit from the model. Usually you can omit this unless you
+# want to # artificially decrease the context length to save time, money, etc.
 limit = 384
 
 # Make sure the context has enough room for this many tokens of output.
@@ -136,7 +137,7 @@ array_priority = "first"
 # array_priority = "equal"
 ```
 
-Right now, the Llama 2 tokenizer is used regardless of the model chosen. This won't give exact results for
+Currently the Llama 2 tokenizer is used regardless of the model chosen. This won't give exact results for
 every model, but will be close enough for most cases.
 
 # Configuration Files
