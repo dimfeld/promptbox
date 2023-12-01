@@ -1,7 +1,7 @@
 use std::{
     ffi::OsString,
     io::{IsTerminal, Write},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 use args::{parse_main_args, parse_template_args, FoundCommand, GlobalRunArgs};
@@ -11,7 +11,7 @@ use error_stack::{Report, ResultExt};
 use global_config::load_dotenv;
 use liquid::partials::{InMemorySource, LazyCompiler};
 use model::ModelOptions;
-use template::ParsedTemplate;
+use template::{render_template, ParsedTemplate};
 
 use crate::model::send_model_request;
 
@@ -27,25 +27,6 @@ mod option;
 mod template;
 #[cfg(test)]
 mod tests;
-
-fn render_template(
-    parser: &liquid::Parser,
-    template_path: &Path,
-    template: &str,
-    context: &liquid::Object,
-) -> Result<String, Report<Error>> {
-    let parsed = parser
-        .parse(&template)
-        .change_context(Error::ParseTemplate)
-        .attach_printable_lazy(|| template_path.display().to_string())?;
-
-    let prompt = parsed
-        .render(&context)
-        .change_context(Error::ParseTemplate)
-        .attach_printable_lazy(|| template_path.display().to_string())?;
-
-    Ok(prompt)
-}
 
 fn template_references_extra(template: &str) -> bool {
     let extra_regex = regex::Regex::new(r##"\{\{-?\s*extra\s*-?\}\}"##).unwrap();
@@ -110,7 +91,7 @@ fn generate_template(
         .build()
         .expect("failed to build parser");
 
-    let mut prompt = render_template(&parser, &template_path, &template, &template_context)
+    let prompt = render_template(&parser, &template_path, &template, &template_context)
         .attach_printable("Rendering template")
         .attach_printable_lazy(|| template_path.display().to_string())?;
     let system_prompt = if let Some((system_path, system_template)) = system {
@@ -121,24 +102,14 @@ fn generate_template(
         String::new()
     };
 
-    let context_limit = model_options
-        .context_limit()
-        .change_context(Error::PreparePrompt)?;
-
-    if let Some(context_limit) = context_limit {
-        let encoded = context::encode(&prompt).change_context(Error::PreparePrompt)?;
-        if encoded.len() > context_limit {
-            if model_options.context.trim_args.is_empty() {
-                // trim from the entire context
-                prompt = model_options
-                    .context
-                    .truncate_at(&prompt, &encoded)
-                    .to_string();
-            } else {
-                // trim from specific arguments and rerender
-            }
-        }
-    };
+    let prompt = context::enforce_context_limit(
+        &model_options,
+        &parser,
+        &template_path,
+        &template,
+        template_context,
+        prompt,
+    )?;
 
     Ok((args, model_options, prompt, system_prompt))
 }
@@ -189,7 +160,7 @@ fn run(base_dir: PathBuf, cmdline: Vec<OsString>) -> Result<(), Report<Error>> {
 
     match args {
         FoundCommand::Run { template, args } => run_template(base_dir, template, args)?,
-        FoundCommand::Other(cli) => {
+        FoundCommand::Other(_cli) => {
             todo!()
         }
     }

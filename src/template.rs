@@ -125,6 +125,25 @@ impl ParsedTemplate {
     }
 }
 
+pub fn render_template(
+    parser: &liquid::Parser,
+    template_path: &Path,
+    template: &str,
+    context: &liquid::Object,
+) -> Result<String, Report<Error>> {
+    let parsed = parser
+        .parse(&template)
+        .change_context(Error::ParseTemplate)
+        .attach_printable_lazy(|| template_path.display().to_string())?;
+
+    let prompt = parsed
+        .render(&context)
+        .change_context(Error::ParseTemplate)
+        .attach_printable_lazy(|| template_path.display().to_string())?;
+
+    Ok(prompt)
+}
+
 #[cfg(test)]
 mod tests {
     use std::{ffi::OsString, path::PathBuf};
