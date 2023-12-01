@@ -1,4 +1,4 @@
-## Unreleased
+## 0.1.1
 
 - Add context length management features
 
