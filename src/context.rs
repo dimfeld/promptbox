@@ -4,16 +4,35 @@ use clap::ValueEnum;
 use error_stack::{Report, ResultExt};
 use liquid::ValueView;
 use serde::{Deserialize, Serialize};
-use tokenizers::{Encoding, Tokenizer};
+use tokenizers::{EncodeInput, Encoding};
 
 use crate::{model::ModelOptions, option::update_if_none, Error};
 
-pub fn encode(input: &str) -> Result<Encoding, Error> {
-    // This isn't accurate for everything but most models are using a similar config.
-    // Eventually it would be better to get the proper tokenizer for each model.
-    Tokenizer::from_pretrained("TheBloke/Llama-2-70B-fp16", None)
-        .and_then(|t| t.encode(input, false))
-        .map_err(|e| Error::Tokenizer(e.to_string()))
+struct Tokenizer(tokenizers::Tokenizer);
+
+impl Tokenizer {
+    fn new() -> Result<Self, Error> {
+        // This isn't accurate for everything but most models are using a similar config.
+        // Eventually it would be better to get the proper tokenizer for each model.
+        let tokenizer = tokenizers::Tokenizer::from_pretrained("TheBloke/Llama-2-70B-fp16", None)
+            .map_err(|e| Error::Tokenizer(e.to_string()))?;
+        Ok(Self(tokenizer))
+    }
+
+    fn encode(&self, input: &str) -> Result<Encoding, Error> {
+        self.0
+            .encode(input, false)
+            .map_err(|e| Error::Tokenizer(e.to_string()))
+    }
+
+    fn encode_batch<'s>(
+        &self,
+        input: Vec<impl Into<EncodeInput<'s>> + Send>,
+    ) -> Result<Vec<Encoding>, Error> {
+        self.0
+            .encode_batch(input, false)
+            .map_err(|e| Error::Tokenizer(e.to_string()))
+    }
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone, Copy, ValueEnum)]
@@ -129,7 +148,10 @@ pub fn enforce_context_limit(
         return Ok(rendered);
     };
 
-    let encoded = encode(&rendered).change_context(Error::PreparePrompt)?;
+    let tokenizer = Tokenizer::new().change_context(Error::PreparePrompt)?;
+    let encoded = tokenizer
+        .encode(&rendered)
+        .change_context(Error::PreparePrompt)?;
 
     if encoded.len() <= context_limit {
         return Ok(rendered);
@@ -148,6 +170,7 @@ pub fn enforce_context_limit(
     } else {
         // trim from specific arguments and rerender
         trim_context_from_args(
+            &tokenizer,
             context_limit,
             encoded.len(),
             &model_options.context,
@@ -162,6 +185,7 @@ pub fn enforce_context_limit(
 }
 
 fn trim_context_from_args(
+    tokenizer: &Tokenizer,
     context_limit: usize,
     current_tokens: usize,
     context_options: &ContextOptions,
@@ -175,7 +199,8 @@ fn trim_context_from_args(
         }
 
         if let Some(value) = template_args.get_mut(arg.as_str()) {
-            let trimmed_amount = trim_arg(to_trim as usize, context_options, None, value)?;
+            let trimmed_amount =
+                trim_arg(tokenizer, to_trim as usize, context_options, None, value)?;
             to_trim -= trimmed_amount as isize;
         }
     }
@@ -184,6 +209,7 @@ fn trim_context_from_args(
 }
 
 fn trim_arg(
+    tokenizer: &Tokenizer,
     to_trim: usize,
     context_options: &ContextOptions,
     encoded_value: Option<Encoding>,
@@ -204,7 +230,13 @@ fn trim_arg(
                             break;
                         }
 
-                        let trimmed = trim_arg(to_trim, context_options, None, value)?;
+                        let trimmed = trim_arg(
+                            tokenizer,
+                            remaining_to_trim as usize,
+                            context_options,
+                            None,
+                            value,
+                        )?;
                         total_trimmed += trimmed;
                         remaining_to_trim -= trimmed as isize;
                     }
@@ -215,7 +247,7 @@ fn trim_arg(
                             break;
                         }
 
-                        let trimmed = trim_arg(to_trim, context_options, None, value)?;
+                        let trimmed = trim_arg(tokenizer, to_trim, context_options, None, value)?;
                         total_trimmed += trimmed;
                         remaining_to_trim -= trimmed as isize;
                     }
@@ -225,10 +257,11 @@ fn trim_arg(
                         .iter()
                         .map(|v| {
                             let s = v.to_kstr();
-                            encode(s.as_str())
+                            tokenizer.encode(s.as_str())
                         })
                         .collect::<Result<Vec<_>, _>>()?;
 
+                    // Trim an equal percentage from each value.
                     let total_tokens = encoded.iter().map(|e| e.len()).sum::<usize>();
                     let percent_to_trim = to_trim as f32 / total_tokens as f32;
 
@@ -236,7 +269,13 @@ fn trim_arg(
                         let this_to_trim =
                             (encoded.len() as f32 * percent_to_trim).round() as usize;
                         if this_to_trim > 0 {
-                            trim_arg(this_to_trim, context_options, Some(encoded), value)?;
+                            trim_arg(
+                                tokenizer,
+                                this_to_trim,
+                                context_options,
+                                Some(encoded),
+                                value,
+                            )?;
                         }
                     }
                 }
@@ -249,18 +288,23 @@ fn trim_arg(
             let value = s.to_kstr();
             let encoded = encoded_value
                 .map(Ok)
-                .unwrap_or_else(|| encode(value.as_str()))?;
+                .unwrap_or_else(|| tokenizer.encode(value.as_str()))?;
 
-            let trimmed = truncate_at(
-                encoded.len() - to_trim,
-                context_options.keep,
-                value.as_str(),
-                &encoded,
-            );
-
-            let new_str = trimmed.to_string();
-            *s = new_str.into();
-            Ok(to_trim)
+            if encoded.len() > to_trim {
+                let trimmed = truncate_at(
+                    encoded.len() - to_trim,
+                    context_options.keep,
+                    value.as_str(),
+                    &encoded,
+                );
+                let new_str = trimmed.to_string();
+                *s = new_str.into();
+                Ok(to_trim)
+            } else {
+                // Removing the entire value. This will get filtered out properly later.
+                *s = "".into();
+                Ok(encoded.len())
+            }
         }
         _ => Ok(0),
     }
@@ -273,28 +317,32 @@ mod test {
     const SAMPLE_TEXT_1: &str = "This is a test texting and it is full of sample text";
     const SAMPLE_TEXT_2: &str = "Another test text too!";
     const SAMPLE_TEXT_3: &str = "Testing testers test";
+    // Calculated from the three texts together
+    const TOTAL_TOKENS: usize = 23;
 
     mod truncate_at {
         use super::*;
 
         #[test]
         fn truncate_start() {
+            let tokenizer = Tokenizer::new().unwrap();
             let result = truncate_at(
                 6,
                 OverflowKeep::Start,
                 SAMPLE_TEXT_1,
-                &encode(SAMPLE_TEXT_1).unwrap(),
+                &tokenizer.encode(SAMPLE_TEXT_1).unwrap(),
             );
             assert_eq!(result, "This is a test texting");
         }
 
         #[test]
         fn truncate_end() {
+            let tokenizer = Tokenizer::new().unwrap();
             let result = truncate_at(
                 6,
                 OverflowKeep::End,
                 SAMPLE_TEXT_1,
-                &encode(SAMPLE_TEXT_1).unwrap(),
+                &tokenizer.encode(SAMPLE_TEXT_1).unwrap(),
             );
             assert_eq!(result, "it is full of sample text");
         }
@@ -305,8 +353,26 @@ mod test {
 
         use super::*;
 
+        fn sum_tokens(tokenizer: &Tokenizer, values: &liquid::model::Value) -> usize {
+            let inputs = values
+                .as_array()
+                .unwrap()
+                .values()
+                .map(|v| v.to_kstr().as_str().to_string())
+                .collect::<Vec<_>>();
+
+            tokenizer
+                .encode_batch(inputs)
+                .unwrap()
+                .into_iter()
+                .map(|e| e.len())
+                .sum()
+        }
+
+        /// Trim a scalar value, and that only the value in trim_args gets trimmed.
         #[test]
-        fn trim_single_value() {
+        fn trim_scalar_value() {
+            let tokenizer = Tokenizer::new().unwrap();
             let mut args = object!({
                 "another_value": 5,
                 "a_title": "The Wizard of Oz",
@@ -314,9 +380,10 @@ mod test {
                 "zoos": "animals"
             });
 
-            let result = trim_context_from_args(
-                20,
-                25,
+            trim_context_from_args(
+                &tokenizer,
+                13,
+                18,
                 &ContextOptions {
                     limit: None,
                     keep: OverflowKeep::Start,
@@ -326,21 +393,221 @@ mod test {
                 &mut args,
             )
             .unwrap();
+
+            assert_eq!(
+                args,
+                object!({
+                    "another_value": 5,
+                    "a_title": "The Wizard of Oz",
+                    "test": "This is a test texting and it",
+                    "zoos": "animals"
+                })
+            );
         }
 
+        /// Trim array values when multiple values get trimmed.
         #[test]
-        fn trim_array_value_first() {
-            todo!();
+        fn trim_array_value_first_multiple_values() {
+            let tokenizer = Tokenizer::new().unwrap();
+            let mut args = object!({
+                "test": vec![
+                    SAMPLE_TEXT_1,
+                    SAMPLE_TEXT_2,
+                    SAMPLE_TEXT_3,
+                ],
+            });
+
+            let start_tokens = sum_tokens(&tokenizer, &args["test"]);
+            println!("start tokens: {}", start_tokens);
+
+            trim_context_from_args(
+                &tokenizer,
+                TOTAL_TOKENS - 7,
+                TOTAL_TOKENS,
+                &ContextOptions {
+                    limit: None,
+                    keep: OverflowKeep::Start,
+                    trim_args: vec!["test".to_string()],
+                    array_priority: ArrayTrimPriority::First,
+                },
+                &mut args,
+            )
+            .unwrap();
+
+            assert_eq!(
+                args,
+                object!({
+                    "test": vec![
+                        SAMPLE_TEXT_1,
+                        "Another test text",
+                    ],
+                })
+            );
+
+            let total_tokens = sum_tokens(&tokenizer, &args["test"]);
+            assert!(total_tokens == TOTAL_TOKENS - 7);
         }
 
+        /// Trim array values when a single value gets trimmed completely out.
+        #[test]
+        fn trim_array_value_first_single_value_exact() {
+            let tokenizer = Tokenizer::new().unwrap();
+            let mut args = object!({
+                "test": vec![
+                    SAMPLE_TEXT_1,
+                    SAMPLE_TEXT_2,
+                    SAMPLE_TEXT_3,
+                ],
+            });
+
+            trim_context_from_args(
+                &tokenizer,
+                TOTAL_TOKENS - 5,
+                TOTAL_TOKENS,
+                &ContextOptions {
+                    limit: None,
+                    keep: OverflowKeep::Start,
+                    trim_args: vec!["test".to_string()],
+                    array_priority: ArrayTrimPriority::First,
+                },
+                &mut args,
+            )
+            .unwrap();
+
+            assert_eq!(
+                args,
+                object!({
+                    "test": vec![
+                        SAMPLE_TEXT_1,
+                        SAMPLE_TEXT_2,
+                    ],
+                })
+            );
+
+            let total_tokens = sum_tokens(&tokenizer, &args["test"]);
+            assert!(total_tokens == TOTAL_TOKENS - 5);
+        }
+
+        /// Test trimming array values when a single value gets trimmed partially.
+        #[test]
+        fn trim_array_value_first_single_value_partial() {
+            let tokenizer = Tokenizer::new().unwrap();
+            let mut args = object!({
+                "test": vec![
+                    SAMPLE_TEXT_1,
+                    SAMPLE_TEXT_2,
+                    SAMPLE_TEXT_3,
+                ],
+            });
+
+            trim_context_from_args(
+                &tokenizer,
+                TOTAL_TOKENS - 2,
+                TOTAL_TOKENS,
+                &ContextOptions {
+                    limit: None,
+                    keep: OverflowKeep::Start,
+                    trim_args: vec!["test".to_string()],
+                    array_priority: ArrayTrimPriority::First,
+                },
+                &mut args,
+            )
+            .unwrap();
+
+            assert_eq!(
+                args,
+                object!({
+                    "test": vec![
+                        SAMPLE_TEXT_1,
+                        SAMPLE_TEXT_2,
+                        "Testing test"
+                    ],
+                })
+            );
+
+            let total_tokens = sum_tokens(&tokenizer, &args["test"]);
+            assert!(total_tokens == TOTAL_TOKENS - 2);
+        }
+
+        /// Trim array values when keeping the last values
         #[test]
         fn trim_array_value_last() {
-            todo!();
+            let tokenizer = Tokenizer::new().unwrap();
+            let mut args = object!({
+                "test": vec![
+                    SAMPLE_TEXT_1,
+                    SAMPLE_TEXT_2,
+                    SAMPLE_TEXT_3,
+                ],
+            });
+
+            trim_context_from_args(
+                &tokenizer,
+                TOTAL_TOKENS - 7,
+                TOTAL_TOKENS,
+                &ContextOptions {
+                    limit: None,
+                    keep: OverflowKeep::Start,
+                    trim_args: vec!["test".to_string()],
+                    array_priority: ArrayTrimPriority::Last,
+                },
+                &mut args,
+            )
+            .unwrap();
+
+            assert_eq!(
+                args,
+                object!({
+                    "test": vec![
+                        "This is a test texting",
+                        SAMPLE_TEXT_2,
+                        SAMPLE_TEXT_3,
+                    ],
+                })
+            );
+
+            let total_tokens = sum_tokens(&tokenizer, &args["test"]);
+            assert!(total_tokens == TOTAL_TOKENS - 7);
         }
 
         #[test]
         fn trim_array_value_equal() {
-            todo!();
+            let tokenizer = Tokenizer::new().unwrap();
+            let mut args = object!({
+                "test": vec![
+                    SAMPLE_TEXT_1,
+                    SAMPLE_TEXT_2,
+                    SAMPLE_TEXT_3,
+                ],
+            });
+
+            trim_context_from_args(
+                &tokenizer,
+                TOTAL_TOKENS - 10,
+                TOTAL_TOKENS,
+                &ContextOptions {
+                    limit: None,
+                    keep: OverflowKeep::Start,
+                    trim_args: vec!["test".to_string()],
+                    array_priority: ArrayTrimPriority::Equal,
+                },
+                &mut args,
+            )
+            .unwrap();
+
+            let total_tokens = sum_tokens(&tokenizer, &args["test"]);
+            assert!(total_tokens == TOTAL_TOKENS - 10);
+
+            assert_eq!(
+                args,
+                object!({
+                    "test": vec![
+                        "This is a test texting and",
+                        "Another test text",
+                        "Testing test",
+                    ],
+                })
+            );
         }
     }
 }
