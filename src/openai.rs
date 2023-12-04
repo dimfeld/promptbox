@@ -4,7 +4,10 @@ use error_stack::{Report, ResultExt};
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::model::{map_model_response_err, ModelComms, ModelError, ModelOptions};
+use crate::{
+    model::{map_model_response_err, ModelComms, ModelError, ModelOptions},
+    requests::request_with_retry,
+};
 
 pub const OPENAI_HOST: &str = "https://api.openai.com";
 
@@ -98,12 +101,13 @@ pub fn send_chat_request(
         body["max_tokens"] = json!(max_tokens);
     }
 
-    let mut response: ChatCompletion = create_base_request(&options, "v1/chat/completions")
-        .timeout(Duration::from_secs(30))
-        .send_json(body)
-        .map_err(map_model_response_err)?
-        .into_json()
-        .change_context(ModelError::Deserialize)?;
+    let mut response: ChatCompletion = request_with_retry(
+        create_base_request(&options, "v1/chat/completions").timeout(Duration::from_secs(30)),
+        body,
+    )
+    .map_err(map_model_response_err)?
+    .into_json()
+    .change_context(ModelError::Deserialize)?;
 
     // TODO streaming
     let result = response

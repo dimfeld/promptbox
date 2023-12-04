@@ -20,6 +20,7 @@ mod model;
 mod ollama;
 mod openai;
 mod option;
+mod requests;
 mod template;
 #[cfg(test)]
 mod tests;

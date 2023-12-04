@@ -1162,6 +1162,7 @@ dependencies = [
  "dirs",
  "dotenvy",
  "error-stack",
+ "fastrand",
  "flume",
  "itertools 0.11.0",
  "liquid",
