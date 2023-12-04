@@ -4,8 +4,9 @@ use error_stack::{Report, ResultExt};
 use serde::Deserialize;
 use serde_json::json;
 
+use super::ModelComms;
 use crate::{
-    model::{map_model_response_err, ModelComms, ModelError, ModelOptions},
+    model::{map_model_response_err, ModelError, ModelOptions},
     requests::request_with_retry,
 };
 

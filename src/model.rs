@@ -8,37 +8,9 @@ use crate::{
     args::GlobalRunArgs,
     context::{ContextOptions, ContextOptionsInput},
     error::Error,
-    ollama,
+    hosts::{ModelComms, ModelCommsModule},
     option::{overwrite_from_option, overwrite_option_from_option, update_if_none},
 };
-
-#[derive(Debug)]
-pub struct ModelComms {
-    pub host: String,
-    pub module: ModelCommsModule,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum ModelCommsModule {
-    OpenAi,
-    Ollama,
-}
-
-impl ModelComms {
-    pub fn new(host: impl Into<String>, module: ModelCommsModule) -> Self {
-        Self {
-            host: host.into(),
-            module,
-        }
-    }
-
-    pub fn model_context_limit(&self, model_name: &str) -> Result<usize, Report<ModelError>> {
-        match self.module {
-            ModelCommsModule::Ollama => crate::ollama::model_context_limit(&self.host, model_name),
-            ModelCommsModule::OpenAi => Ok(crate::openai::model_context_limit(model_name)),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ModelOptions {
@@ -110,7 +82,7 @@ impl ModelOptions {
     pub fn api_host(&self) -> ModelComms {
         let model = self.full_model_name();
         if model.starts_with("gpt-4") || model.starts_with("gpt-3.5-") {
-            ModelComms::new(crate::openai::OPENAI_HOST, ModelCommsModule::OpenAi)
+            ModelComms::new(crate::hosts::openai::OPENAI_HOST, ModelCommsModule::OpenAi)
         } else if model == "lm-studio" {
             let host = self
                 .lm_studio_host
@@ -118,7 +90,10 @@ impl ModelOptions {
                 .unwrap_or("http://localhost:1234");
             ModelComms::new(host, ModelCommsModule::OpenAi)
         } else {
-            let host = self.ollama_host.as_deref().unwrap_or(ollama::DEFAULT_HOST);
+            let host = self
+                .ollama_host
+                .as_deref()
+                .unwrap_or(crate::hosts::ollama::DEFAULT_HOST);
             ModelComms::new(host, ModelCommsModule::Ollama)
         }
     }
@@ -273,29 +248,6 @@ pub fn map_model_response_err(err: ureq::Error) -> Report<ModelError> {
         ureq::Error::Status(code, response) => {
             let message = response.into_string().unwrap();
             Report::new(ModelError::Model(code, message))
-        }
-    }
-}
-
-pub fn send_model_request(
-    options: &ModelOptions,
-    prompt: &str,
-    system: &str,
-    message_tx: flume::Sender<String>,
-) -> Result<(), Report<ModelError>> {
-    let ModelComms { module, .. } = options.api_host();
-    let system = if system.is_empty() {
-        None
-    } else {
-        Some(system)
-    };
-
-    match module {
-        ModelCommsModule::OpenAi => {
-            crate::openai::send_chat_request(options, prompt, system, message_tx)
-        }
-        ModelCommsModule::Ollama => {
-            crate::ollama::send_request(options, prompt, system, message_tx)
         }
     }
 }

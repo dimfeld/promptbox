@@ -5,7 +5,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use ureq::Response;
 
-use crate::model::{map_model_response_err, ModelComms, ModelError, ModelOptions, OutputFormat};
+use crate::{
+    hosts::ModelComms,
+    model::{map_model_response_err, ModelError, ModelOptions, OutputFormat},
+};
 
 pub const DEFAULT_HOST: &str = "http://localhost:11434";
 

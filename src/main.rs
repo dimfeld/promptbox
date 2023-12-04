@@ -5,20 +5,18 @@ use config::Config;
 use error::Error;
 use error_stack::{Report, ResultExt};
 use global_config::load_dotenv;
+use hosts::ModelComms;
 use liquid::partials::{InMemorySource, LazyCompiler};
 use model::ModelOptions;
 use template::{render_template, template_references_extra, ParsedTemplate};
-
-use crate::model::send_model_request;
 
 mod args;
 mod config;
 mod context;
 mod error;
 mod global_config;
+mod hosts;
 mod model;
-mod ollama;
-mod openai;
 mod option;
 mod requests;
 mod template;
@@ -140,7 +138,15 @@ fn run_template(
         Ok::<(), std::io::Error>(())
     });
 
-    send_model_request(&model_options, &prompt, &system, message_tx)
+    let system = if system.is_empty() {
+        None
+    } else {
+        Some(system)
+    };
+
+    let ModelComms { module, .. } = model_options.api_host();
+    module
+        .send_model_request(&model_options, &prompt, system.as_deref(), message_tx)
         .change_context(Error::RunPrompt)?;
 
     print_thread.join().unwrap().ok();
