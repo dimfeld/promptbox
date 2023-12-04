@@ -8,7 +8,7 @@ use crate::{
     args::GlobalRunArgs,
     context::{ContextOptions, ContextOptionsInput},
     error::Error,
-    hosts::{ModelComms, ModelCommsModule},
+    hosts::{ollama::OllamaHost, openai::OpenAiHost, ModelHost},
     option::{overwrite_from_option, overwrite_option_from_option, update_if_none},
 };
 
@@ -79,22 +79,19 @@ impl ModelOptions {
         self.alias.get(&self.model).unwrap_or(&self.model)
     }
 
-    pub fn api_host(&self) -> ModelComms {
+    pub fn api_host(&self) -> Box<dyn ModelHost> {
         let model = self.full_model_name();
         if model.starts_with("gpt-4") || model.starts_with("gpt-3.5-") {
-            ModelComms::new(crate::hosts::openai::OPENAI_HOST, ModelCommsModule::OpenAi)
+            Box::new(OpenAiHost::new(None, self.openai_key.clone()))
         } else if model == "lm-studio" {
             let host = self
                 .lm_studio_host
-                .as_deref()
-                .unwrap_or("http://localhost:1234");
-            ModelComms::new(host, ModelCommsModule::OpenAi)
+                .clone()
+                .unwrap_or_else(|| "http://localhost:1234".to_string());
+            Box::new(OpenAiHost::new(Some(host), None))
         } else {
-            let host = self
-                .ollama_host
-                .as_deref()
-                .unwrap_or(crate::hosts::ollama::DEFAULT_HOST);
-            ModelComms::new(host, ModelCommsModule::Ollama)
+            let host = self.ollama_host.clone();
+            Box::new(OllamaHost::new(host))
         }
     }
 
