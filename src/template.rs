@@ -392,6 +392,41 @@ optvalue
     }
 
     #[test]
+    fn cmdline_model_options_override_template_options() {
+        let cmdline = to_cmdline_vec(vec![
+            "test",
+            "run",
+            "all_model_options",
+            "--model",
+            "gpt-3.5-turbo-1106",
+            "--temperature",
+            "0.9",
+            "--context-limit",
+            "10",
+            "--overflow-keep",
+            "start",
+            "--reserve-output-context",
+            "5",
+        ]);
+
+        let (_, model_options, _, _) = generate_template(
+            base_dir("all_model_options"),
+            "all_model_options".to_string(),
+            cmdline,
+        )
+        .expect("generate_template");
+
+        assert_eq!(model_options.model, "gpt-3.5-turbo-1106".to_string());
+        assert_eq!(model_options.temperature, 0.9);
+        assert_eq!(model_options.context.limit, Some(10));
+        assert_eq!(model_options.context.reserve_output, 5);
+        assert_eq!(
+            model_options.context.keep,
+            crate::context::OverflowKeep::Start
+        );
+    }
+
+    #[test]
     fn system_prompt() {
         let cmdline = to_cmdline_vec(vec!["test", "run", "system_prompt", "--type", "fruit"]);
         let (_, _, _, system_prompt) = generate_template(
