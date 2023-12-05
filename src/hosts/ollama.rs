@@ -12,11 +12,14 @@ pub const DEFAULT_HOST: &str = "http://localhost:11434";
 
 pub struct OllamaHost {
     pub host: Option<String>,
+    // Ollama doesn't use an API key, but if someone puts it behind a reverse proxy this could be
+    // useful.
+    pub api_key: Option<String>,
 }
 
 impl OllamaHost {
-    pub fn new(host: Option<String>) -> Self {
-        Self { host }
+    pub fn new(host: Option<String>, api_key: Option<String>) -> Self {
+        Self { host, api_key }
     }
 
     fn host(&self) -> &str {
@@ -33,7 +36,15 @@ impl ModelHost for OllamaHost {
         message_tx: flume::Sender<String>,
     ) -> Result<(), Report<ModelError>> {
         let url = format!("{}/api/generate", self.host());
-        let response: Response = ureq::post(&url)
+
+        let request = ureq::post(&url);
+        let request = if let Some(key) = self.api_key.as_ref() {
+            request.set("Authorization", &format!("Bearer {}", key))
+        } else {
+            request
+        };
+
+        let response: Response = request
             .send_json(OllamaRequest {
                 model: &options.full_model_name(),
                 prompt,

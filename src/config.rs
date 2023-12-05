@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use error_stack::{Report, ResultExt};
 use serde::Deserialize;
@@ -6,6 +9,7 @@ use serde::Deserialize;
 use crate::{
     error::Error,
     global_config::global_config_dirs,
+    hosts::{HostDefinition, HostDefinitionInput},
     model::{ModelOptions, ModelOptionsInput},
     option::overwrite_option_from_option,
     template::ParsedTemplate,
@@ -28,6 +32,9 @@ pub struct ConfigInput {
     pub use_global_config: Option<bool>,
     /// Default model options to use for any prompts that don't override them.
     pub model: Option<ModelOptionsInput>,
+    /// Custom hosts that can serve model requests.
+    #[serde(default)]
+    pub host: HashMap<String, HostDefinitionInput>,
 }
 
 #[derive(Debug, Default)]
@@ -64,9 +71,22 @@ impl Config {
             }
         }
 
+        let mut hosts = HostDefinition::builtin();
+
+        for (k, host_input) in config.host {
+            if let Some(host) = hosts.get_mut(&k) {
+                host.merge_from_input(&host_input);
+            } else {
+                let host = HostDefinition::try_from(host_input)
+                    .attach_printable_lazy(|| format!("Host {k}"))
+                    .change_context(Error::ParseConfig)?;
+                hosts.insert(k, host);
+            }
+        }
+
         Ok(Self {
             template_dirs: config.templates,
-            model: ModelOptions::from(config.model.unwrap_or_default()),
+            model: ModelOptions::new(config.model.unwrap_or_default(), hosts),
         })
     }
 
@@ -140,6 +160,14 @@ impl ConfigInput {
                 model.merge_defaults(&other_model);
             } else {
                 self.model = Some(other_model);
+            }
+        }
+
+        for (key, other_host) in other.host {
+            if let Some(host) = self.host.get_mut(&key) {
+                host.merge_from_input(&other_host);
+            } else {
+                self.host.insert(key, other_host);
             }
         }
     }

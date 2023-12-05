@@ -8,7 +8,7 @@ use crate::{
     args::GlobalRunArgs,
     context::{ContextOptions, ContextOptionsInput},
     error::Error,
-    hosts::{ollama::OllamaHost, openai::OpenAiHost, ModelHost},
+    hosts::{HostDefinition, ModelHost},
     option::{overwrite_from_option, overwrite_option_from_option, update_if_none},
 };
 
@@ -28,6 +28,10 @@ pub struct ModelOptions {
     pub max_tokens: Option<u32>,
     /// Alias of short model names to full names, useful for ollama, for example
     pub alias: HashMap<String, String>,
+
+    /// Hosts parsed from the configuration
+    #[serde(skip)]
+    pub host: HashMap<String, HostDefinition>,
 
     #[serde(default)]
     pub context: ContextOptions,
@@ -53,11 +57,33 @@ impl Default for ModelOptions {
             max_tokens: None,
             context: ContextOptions::default(),
             alias: HashMap::new(),
+            host: HostDefinition::builtin(),
         }
     }
 }
 
 impl ModelOptions {
+    pub fn new(value: ModelOptionsInput, host: HashMap<String, HostDefinition>) -> Self {
+        Self {
+            model: value.model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
+            // For security, don't allow setting openAI key in normal config or template files.
+            openai_key: None,
+            lm_studio_host: value.lm_studio_host,
+            ollama_host: value.ollama_host,
+            temperature: value.temperature.unwrap_or(DEFAULT_TEMPERATURE),
+            format: value.format,
+            top_p: value.top_p,
+            top_k: value.top_k,
+            frequency_penalty: value.frequency_penalty,
+            presence_penalty: value.presence_penalty,
+            stop: value.stop.unwrap_or_default(),
+            max_tokens: value.max_tokens,
+            alias: value.alias,
+            context: value.context.into(),
+            host,
+        }
+    }
+
     pub fn update_from_args(&mut self, args: &GlobalRunArgs) {
         overwrite_from_option(&mut self.model, &args.model);
         overwrite_option_from_option(&mut self.lm_studio_host, &args.lm_studio_host);
@@ -79,20 +105,20 @@ impl ModelOptions {
         self.alias.get(&self.model).unwrap_or(&self.model)
     }
 
-    pub fn api_host(&self) -> Box<dyn ModelHost> {
+    pub fn api_host(&self) -> Result<Box<dyn ModelHost>, Error> {
         let model = self.full_model_name();
-        if model.starts_with("gpt-4") || model.starts_with("gpt-3.5-") {
-            Box::new(OpenAiHost::new(None, self.openai_key.clone()))
+        let host_name = if model.starts_with("gpt-4") || model.starts_with("gpt-3.5-") {
+            "openai"
         } else if model == "lm-studio" {
-            let host = self
-                .lm_studio_host
-                .clone()
-                .unwrap_or_else(|| "http://localhost:1234".to_string());
-            Box::new(OpenAiHost::new(Some(host), None))
+            "lm-studio"
         } else {
-            let host = self.ollama_host.clone();
-            Box::new(OllamaHost::new(host))
-        }
+            "ollama"
+        };
+
+        self.host
+            .get(host_name)
+            .ok_or(Error::UnknownModelHost(host_name.to_string()))
+            .map(|host| host.into_model_host())
     }
 
     pub fn update_from_model_input(&mut self, other: &ModelOptionsInput) {
@@ -126,7 +152,7 @@ impl ModelOptions {
             return Ok(None);
         }
 
-        let comms = self.api_host();
+        let comms = self.api_host()?;
         let limit = comms
             .model_context_limit(model)
             .change_context(Error::ContextLimit)?;
@@ -140,28 +166,6 @@ impl ModelOptions {
         }
 
         Ok(Some(limit - self.context.reserve_output))
-    }
-}
-
-impl From<ModelOptionsInput> for ModelOptions {
-    fn from(value: ModelOptionsInput) -> Self {
-        Self {
-            model: value.model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
-            // For security, don't allow setting openAI key in normal config or template files.
-            openai_key: None,
-            lm_studio_host: value.lm_studio_host,
-            ollama_host: value.ollama_host,
-            temperature: value.temperature.unwrap_or(DEFAULT_TEMPERATURE),
-            format: value.format,
-            top_p: value.top_p,
-            top_k: value.top_k,
-            frequency_penalty: value.frequency_penalty,
-            presence_penalty: value.presence_penalty,
-            stop: value.stop.unwrap_or_default(),
-            max_tokens: value.max_tokens,
-            alias: value.alias,
-            context: value.context.into(),
-        }
     }
 }
 

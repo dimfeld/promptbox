@@ -4,6 +4,10 @@ use thiserror::Error;
 pub enum Error {
     #[error("Error reading configuration file")]
     ParseConfig,
+    #[error("Missing field {0}")]
+    MissingField(&'static str),
+    #[error("Unknown model host {0}")]
+    UnknownModelHost(String),
     #[error("Error reading template")]
     ParseTemplate,
     #[error("Template not found")]

@@ -1,4 +1,4 @@
-use std::{ffi::OsString, io::IsTerminal, path::PathBuf};
+use std::{ffi::OsString, path::PathBuf};
 
 use args::{parse_main_args, parse_template_args, FoundCommand, GlobalRunArgs};
 use config::Config;
@@ -7,7 +7,7 @@ use error_stack::{Report, ResultExt};
 use global_config::load_dotenv;
 use liquid::partials::{InMemorySource, LazyCompiler};
 use model::ModelOptions;
-use template::{assemble_template, render_template, template_references_extra, ParsedTemplate};
+use template::{assemble_template, render_template, ParsedTemplate};
 
 mod args;
 mod config;
@@ -115,7 +115,7 @@ fn run_template(
         Some(system)
     };
 
-    let host = model_options.api_host();
+    let host = model_options.api_host()?;
     host.send_model_request(&model_options, &prompt, system.as_deref(), message_tx)
         .change_context(Error::RunPrompt)?;
 
