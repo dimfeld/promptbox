@@ -1,0 +1,5 @@
+system_prompt_path = "system_prompt.liquid"
+template = "a prompt"
+
+[options]
+type = { type = "string" }

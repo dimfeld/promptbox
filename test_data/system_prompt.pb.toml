@@ -1,0 +1,5 @@
+system_prompt = "a system prompt for {{type}}"
+template = "a prompt"
+
+[options]
+type = { type = "string" }

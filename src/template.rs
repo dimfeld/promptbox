@@ -391,6 +391,38 @@ optvalue
         );
     }
 
+    #[test]
+    fn system_prompt() {
+        let cmdline = to_cmdline_vec(vec!["test", "run", "system_prompt", "--type", "fruit"]);
+        let (_, _, _, system_prompt) = generate_template(
+            PathBuf::from(BASE_DIR),
+            "system_prompt".to_string(),
+            cmdline,
+        )
+        .expect("generate_template");
+
+        assert_eq!(system_prompt, "a system prompt for fruit");
+    }
+
+    #[test]
+    fn system_prompt_in_file() {
+        let cmdline = to_cmdline_vec(vec![
+            "test",
+            "run",
+            "system_prompt_in_file",
+            "--type",
+            "fruit",
+        ]);
+        let (_, _, _, system_prompt) = generate_template(
+            PathBuf::from(BASE_DIR),
+            "system_prompt_in_file".to_string(),
+            cmdline,
+        )
+        .expect("generate_template");
+
+        assert_eq!(system_prompt, "A system prompt for fruit\n");
+    }
+
     mod assemble_template {
         use super::*;
 
