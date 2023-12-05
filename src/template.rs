@@ -1,12 +1,13 @@
 use std::{
     collections::HashMap,
+    io::IsTerminal,
     path::{Path, PathBuf},
 };
 
 use error_stack::{Report, ResultExt};
 use serde::Deserialize;
 
-use crate::{error::Error, model::ModelOptionsInput};
+use crate::{args::GlobalRunArgs, error::Error, model::ModelOptionsInput};
 
 #[derive(Deserialize, Debug, Default, Copy, Clone, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -147,6 +148,44 @@ pub fn render_template(
 pub fn template_references_extra(template: &str) -> bool {
     let extra_regex = regex::Regex::new(r##"\{\{-?\s*extra\s*-?\}\}"##).unwrap();
     extra_regex.is_match(template)
+}
+
+pub fn assemble_template(
+    args: &mut GlobalRunArgs,
+    template_context: &mut liquid::Object,
+    initial_template: String,
+) -> Result<String, Report<Error>> {
+    let mut template = match args.prepend.as_ref() {
+        Some(pre) => format!("{pre}\n\n{initial_template}"),
+        None => initial_template,
+    };
+
+    let mut extra = std::mem::take(&mut args.extra_prompt);
+
+    let stdin = std::io::stdin();
+    if !stdin.is_terminal() {
+        // Some text is potentially being piped in, so read it.
+        let stdin_value = std::io::read_to_string(stdin)
+            .attach_printable("Reading stdin")
+            .change_context(Error::Io)?;
+        if !stdin_value.is_empty() {
+            extra.push(stdin_value);
+        }
+    };
+
+    let extra_content = extra.join("\n\n");
+    if template_references_extra(&template) {
+        template_context.insert("extra".into(), liquid::model::Value::scalar(extra_content));
+    } else if !extra_content.is_empty() {
+        template = format!("{template}\n\n{extra_content}");
+    }
+
+    let template = match args.append.as_ref() {
+        Some(append) => format!("{template}\n\n{append}"),
+        None => template,
+    };
+
+    Ok(template)
 }
 
 #[cfg(test)]
@@ -350,6 +389,101 @@ optvalue
             options.context.array_priority,
             Some(crate::context::ArrayTrimPriority::Equal)
         );
+    }
+
+    mod assemble_template {
+        use super::*;
+
+        #[test]
+        fn append() {
+            let cmdline = to_cmdline_vec(vec![
+                "test",
+                "run",
+                "normal",
+                "--post",
+                "Do it right",
+                "Do it now",
+                "Do it best",
+            ]);
+
+            let (_, _, prompt, _) =
+                generate_template(PathBuf::from(BASE_DIR), "simple".to_string(), cmdline)
+                    .expect("generate_template");
+            assert_eq!(
+                "a simple prompt\n\nDo it now\n\nDo it best\n\nDo it right",
+                prompt
+            );
+        }
+
+        #[test]
+        fn prepend() {
+            let cmdline = to_cmdline_vec(vec![
+                "test",
+                "run",
+                "normal",
+                "--pre",
+                "Do it right",
+                "Do it now",
+                "Do it best",
+            ]);
+
+            let (_, _, prompt, _) =
+                generate_template(PathBuf::from(BASE_DIR), "simple".to_string(), cmdline)
+                    .expect("generate_template");
+            assert_eq!(
+                "Do it right\n\na simple prompt\n\nDo it now\n\nDo it best",
+                prompt
+            );
+        }
+
+        #[test]
+        fn append_prepend() {
+            let cmdline = to_cmdline_vec(vec![
+                "test",
+                "run",
+                "normal",
+                "--pre",
+                "Do it right",
+                "--post",
+                "Is it done?",
+                "Do it now",
+                "Do it best",
+            ]);
+
+            let (_, _, prompt, _) =
+                generate_template(PathBuf::from(BASE_DIR), "simple".to_string(), cmdline)
+                    .expect("generate_template");
+            assert_eq!(
+                "Do it right\n\na simple prompt\n\nDo it now\n\nDo it best\n\nIs it done?",
+                prompt
+            );
+        }
+
+        #[test]
+        fn extra_reference_in_template() {
+            let cmdline = to_cmdline_vec(vec![
+                "test",
+                "run",
+                "normal",
+                "--pre",
+                "Do it right",
+                "--post",
+                "Is it done?",
+                "Do it now",
+                "Do it best",
+            ]);
+
+            let (_, _, prompt, _) = generate_template(
+                PathBuf::from(BASE_DIR),
+                "extra_template_arg".to_string(),
+                cmdline,
+            )
+            .expect("generate_template");
+            assert_eq!(
+                "Do it right\n\nSome text\n\nDo it now\n\nDo it best\n\nAnother\n\nIs it done?",
+                prompt
+            );
+        }
     }
 
     mod args {

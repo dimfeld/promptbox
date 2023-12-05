@@ -1,0 +1,7 @@
+template = '''
+Some text
+
+{{extra}}
+
+Another'''
+

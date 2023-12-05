@@ -7,7 +7,7 @@ use error_stack::{Report, ResultExt};
 use global_config::load_dotenv;
 use liquid::partials::{InMemorySource, LazyCompiler};
 use model::ModelOptions;
-use template::{render_template, template_references_extra, ParsedTemplate};
+use template::{assemble_template, render_template, template_references_extra, ParsedTemplate};
 
 mod args;
 mod config;
@@ -43,35 +43,7 @@ fn generate_template(
     model_options.update_from_model_input(&input.model);
     model_options.update_from_args(&args);
 
-    let mut template = match args.prepend.as_ref() {
-        Some(pre) => format!("{pre}\n\n{template}"),
-        None => template,
-    };
-
-    let mut extra = std::mem::take(&mut args.extra_prompt);
-
-    let stdin = std::io::stdin();
-    if !stdin.is_terminal() {
-        // Some text is potentially being piped in, so read it.
-        let stdin_value = std::io::read_to_string(stdin)
-            .attach_printable("Reading stdin")
-            .change_context(Error::Io)?;
-        if !stdin_value.is_empty() {
-            extra.push(stdin_value);
-        }
-    };
-
-    let extra_content = extra.join("\n\n");
-    if template_references_extra(&template) {
-        template_context.insert("extra".into(), liquid::model::Value::scalar(extra_content));
-    } else if !extra_content.is_empty() {
-        template = format!("{template}\n\n{extra_content}");
-    }
-
-    let template = match args.append.as_ref() {
-        Some(append) => format!("{template}\n\n{append}"),
-        None => template,
-    };
+    let template = assemble_template(&mut args, &mut template_context, template)?;
 
     // TODO replace InMemorySource with a custom source that can look for partials in the various
     // config directories.
