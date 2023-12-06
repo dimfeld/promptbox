@@ -49,6 +49,10 @@ pub struct GlobalRunArgs {
     #[arg(long, short = 'm', env = "MODEL")]
     pub model: Option<String>,
 
+    /// Send the request to this model host
+    #[arg(long, env = "MODEL_HOST")]
+    pub model_host: Option<String>,
+
     /// Override the temperature value passed to the model
     #[arg(long, short = 't')]
     pub temperature: Option<f32>,

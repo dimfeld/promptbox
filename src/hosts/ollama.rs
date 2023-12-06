@@ -46,7 +46,7 @@ impl ModelHost for OllamaHost {
 
         let response: Response = request
             .send_json(OllamaRequest {
-                model: &options.full_model_name(),
+                model: &options.full_model_spec().model_name(),
                 prompt,
                 system,
                 format: options.format,
@@ -74,7 +74,7 @@ impl ModelHost for OllamaHost {
         Ok(())
     }
 
-    fn model_context_limit(&self, model: &str) -> Result<usize, Report<ModelError>> {
+    fn model_context_limit(&self, model: &str) -> Result<Option<usize>, Report<ModelError>> {
         let url = format!("{}/api/show", self.host());
         let response: ModelInfo = ureq::post(&url)
             .send_json(json!({
@@ -92,7 +92,7 @@ impl ModelHost for OllamaHost {
 
         let Some(context_param) = context_param else {
             // The default if none is specified in the modelfile.
-            return Ok(2048);
+            return Ok(Some(2048));
         };
 
         // There is at least one space after the param name, so just trim the rest to get the actual value.
@@ -101,7 +101,7 @@ impl ModelHost for OllamaHost {
             .parse::<usize>()
             .change_context(ModelError::Deserialize)?;
 
-        Ok(context_size)
+        Ok(Some(context_size))
     }
 }
 #[derive(Debug, Serialize)]

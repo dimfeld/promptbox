@@ -21,7 +21,7 @@ pub trait ModelHost {
         message_tx: flume::Sender<String>,
     ) -> Result<(), Report<ModelError>>;
 
-    fn model_context_limit(&self, model_name: &str) -> Result<usize, Report<ModelError>>;
+    fn model_context_limit(&self, model_name: &str) -> Result<Option<usize>, Report<ModelError>>;
 }
 
 /// An API definition to talk to a host send prompts to it.
@@ -33,11 +33,23 @@ pub enum HostProtocol {
     OpenAi,
 }
 
+impl HostProtocol {
+    fn default_context_length_option(&self) -> bool {
+        match self {
+            HostProtocol::Ollama => true,
+            // There's no API for getting the context length here. For real OpenAI we set this to
+            // true though.
+            HostProtocol::OpenAi => false,
+        }
+    }
+}
+
 /// An LLM host
 #[derive(Deserialize, Debug, Clone)]
 pub struct HostDefinition {
     pub endpoint: String,
     pub protocol: HostProtocol,
+    pub limit_context_length: bool,
     /// The environment variable that holds the authentication token for this host
     pub api_key: Option<String>,
 }
@@ -52,7 +64,11 @@ impl HostDefinition {
         let endpoint = self.endpoint.clone();
         match self.protocol {
             HostProtocol::Ollama => Box::new(ollama::OllamaHost::new(Some(endpoint), key)),
-            HostProtocol::OpenAi => Box::new(openai::OpenAiHost::new(Some(endpoint), key)),
+            HostProtocol::OpenAi => Box::new(openai::OpenAiHost::new(
+                Some(endpoint),
+                key,
+                self.limit_context_length,
+            )),
         }
     }
 
@@ -70,6 +86,7 @@ impl HostDefinition {
                 HostDefinition {
                     endpoint: "http://localhost:1234".to_string(),
                     protocol: HostProtocol::OpenAi,
+                    limit_context_length: false,
                     api_key: None,
                 },
             ),
@@ -78,6 +95,7 @@ impl HostDefinition {
                 HostDefinition {
                     endpoint: ollama::DEFAULT_HOST.to_string(),
                     protocol: HostProtocol::Ollama,
+                    limit_context_length: true,
                     api_key: None,
                 },
             ),
@@ -86,6 +104,7 @@ impl HostDefinition {
                 HostDefinition {
                     endpoint: openai::OPENAI_HOST.to_string(),
                     protocol: HostProtocol::OpenAi,
+                    limit_context_length: true,
                     api_key: Some("OPENAI_API_KEY".to_string()),
                 },
             ),
@@ -94,6 +113,7 @@ impl HostDefinition {
                 HostDefinition {
                     endpoint: "https://api.openrouter.ai/api".to_string(),
                     protocol: HostProtocol::OpenAi,
+                    limit_context_length: false,
                     api_key: Some("OPENROUTER_API_KEY".to_string()),
                 },
             ),
@@ -113,6 +133,9 @@ impl TryFrom<HostDefinitionInput> for HostDefinition {
         let protocol = value.protocol.ok_or(Error::MissingField("protocol"))?;
         Ok(Self {
             endpoint,
+            limit_context_length: value
+                .limit_context_length
+                .unwrap_or_else(|| protocol.default_context_length_option()),
             protocol,
             api_key: value.api_key,
         })
@@ -124,6 +147,7 @@ pub struct HostDefinitionInput {
     pub endpoint: Option<String>,
     pub api_key: Option<String>,
     pub protocol: Option<HostProtocol>,
+    pub limit_context_length: Option<bool>,
 }
 
 impl HostDefinitionInput {
@@ -131,5 +155,6 @@ impl HostDefinitionInput {
         overwrite_option_from_option(&mut self.endpoint, &other.endpoint);
         overwrite_option_from_option(&mut self.protocol, &other.protocol);
         overwrite_option_from_option(&mut self.api_key, &other.api_key);
+        overwrite_option_from_option(&mut self.limit_context_length, &other.limit_context_length)
     }
 }
