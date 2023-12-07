@@ -31,6 +31,8 @@ pub struct ModelOptions {
 
     /// Hosts parsed from the configuration
     pub host: HashMap<String, HostDefinition>,
+    /// The default host to use for non-OpenAI models, when no other host is specified.
+    pub default_host: String,
 
     pub context: ContextOptions,
 }
@@ -56,12 +58,17 @@ impl Default for ModelOptions {
             context: ContextOptions::default(),
             alias: HashMap::new(),
             host: HostDefinition::builtin(),
+            default_host: HostDefinition::default_host().to_string().to_string(),
         }
     }
 }
 
 impl ModelOptions {
-    pub fn new(value: ModelOptionsInput, host: HashMap<String, HostDefinition>) -> Self {
+    pub fn new(
+        value: ModelOptionsInput,
+        host: HashMap<String, HostDefinition>,
+        default_host: String,
+    ) -> Self {
         Self {
             model: value.model.unwrap_or_default(),
             // For security, don't allow setting openAI key in normal config or template files.
@@ -79,6 +86,7 @@ impl ModelOptions {
             alias: value.alias,
             context: value.context.into(),
             host,
+            default_host,
         }
     }
 
@@ -125,8 +133,7 @@ impl ModelOptions {
                 } else if model == "lm-studio" {
                     "lm-studio"
                 } else {
-                    // TODO use the "default" model once the setting exists
-                    "ollama"
+                    &self.default_host
                 }
             }
         };

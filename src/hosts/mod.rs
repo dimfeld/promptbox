@@ -78,6 +78,10 @@ impl HostDefinition {
         overwrite_option_from_option(&mut self.api_key, &other.api_key);
     }
 
+    pub fn default_host() -> &'static str {
+        "ollama"
+    }
+
     /// A set of built-in providers
     pub fn builtin() -> HashMap<String, HostDefinition> {
         [
@@ -156,5 +160,16 @@ impl HostDefinitionInput {
         overwrite_option_from_option(&mut self.protocol, &other.protocol);
         overwrite_option_from_option(&mut self.api_key, &other.api_key);
         overwrite_option_from_option(&mut self.limit_context_length, &other.limit_context_length)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::hosts::HostDefinition;
+
+    #[test]
+    fn default_host_is_valid() {
+        let builtin = super::HostDefinition::builtin();
+        assert!(builtin.contains_key(HostDefinition::default_host()));
     }
 }

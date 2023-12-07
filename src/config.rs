@@ -35,6 +35,9 @@ pub struct ConfigInput {
     /// Custom hosts that can serve model requests.
     #[serde(default)]
     pub host: HashMap<String, HostDefinitionInput>,
+    /// The default model host to use. If absent, ollama is the default.
+    /// GPT 3.5/4 models will always use OpenAI as the default if not explicitly set otherwise.
+    pub default_host: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -86,7 +89,13 @@ impl Config {
 
         Ok(Self {
             template_dirs: config.templates,
-            model: ModelOptions::new(config.model.unwrap_or_default(), hosts),
+            model: ModelOptions::new(
+                config.model.unwrap_or_default(),
+                hosts,
+                config
+                    .default_host
+                    .unwrap_or_else(|| HostDefinition::default_host().to_string()),
+            ),
         })
     }
 
