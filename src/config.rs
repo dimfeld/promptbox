@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use error_stack::{Report, ResultExt};
 use serde::Deserialize;
@@ -6,6 +9,7 @@ use serde::Deserialize;
 use crate::{
     error::Error,
     global_config::global_config_dirs,
+    hosts::{HostDefinition, HostDefinitionInput},
     model::{ModelOptions, ModelOptionsInput},
     option::overwrite_option_from_option,
     template::ParsedTemplate,
@@ -28,6 +32,12 @@ pub struct ConfigInput {
     pub use_global_config: Option<bool>,
     /// Default model options to use for any prompts that don't override them.
     pub model: Option<ModelOptionsInput>,
+    /// Custom hosts that can serve model requests.
+    #[serde(default)]
+    pub host: HashMap<String, HostDefinitionInput>,
+    /// The default model host to use. If absent, ollama is the default.
+    /// GPT 3.5/4 models will always use OpenAI as the default if not explicitly set otherwise.
+    pub default_host: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -64,9 +74,32 @@ impl Config {
             }
         }
 
+        Self::create_config(config)
+    }
+
+    fn create_config(input: ConfigInput) -> Result<Self, Report<Error>> {
+        let mut hosts = HostDefinition::builtin();
+
+        for (k, host_input) in input.host {
+            if let Some(host) = hosts.get_mut(&k) {
+                host.merge_from_input(&host_input);
+            } else {
+                let host = HostDefinition::try_from(host_input)
+                    .attach_printable_lazy(|| format!("Host {k}"))
+                    .change_context(Error::ParseConfig)?;
+                hosts.insert(k, host);
+            }
+        }
+
         Ok(Self {
-            template_dirs: config.templates,
-            model: ModelOptions::from(config.model.unwrap_or_default()),
+            template_dirs: input.templates,
+            model: ModelOptions::new(
+                input.model.unwrap_or_default(),
+                hosts,
+                input
+                    .default_host
+                    .unwrap_or_else(|| HostDefinition::default_host().to_string()),
+            ),
         })
     }
 
@@ -142,6 +175,14 @@ impl ConfigInput {
                 self.model = Some(other_model);
             }
         }
+
+        for (key, other_host) in other.host {
+            if let Some(host) = self.host.get_mut(&key) {
+                host.merge_from_input(&other_host);
+            } else {
+                self.host.insert(key, other_host);
+            }
+        }
     }
 }
 
@@ -189,5 +230,116 @@ mod tests {
             config.model.top_p, None,
             "Should not read values from the parent directory"
         );
+    }
+
+    #[test]
+    fn config_host_merge() {
+        let mut first_config = ConfigInput {
+            host: HashMap::from([(
+                "foo".to_string(),
+                HostDefinitionInput {
+                    endpoint: Some("foo_endpoint".to_string()),
+                    api_key: Some("foo_key".to_string()),
+                    protocol: Some(crate::hosts::HostProtocol::OpenAi),
+                    limit_context_length: Some(true),
+                },
+            )]),
+            ..Default::default()
+        };
+
+        let second_config = ConfigInput {
+            host: HashMap::from([(
+                "foo".to_string(),
+                HostDefinitionInput {
+                    endpoint: Some("bar_endpoint".to_string()),
+                    ..Default::default()
+                },
+            )]),
+            ..Default::default()
+        };
+
+        first_config.merge(second_config);
+
+        let host = first_config.host.get("foo").unwrap();
+        assert_eq!(host.endpoint, Some("bar_endpoint".to_string()));
+        assert_eq!(host.api_key, Some("foo_key".to_string()));
+        assert!(matches!(
+            host.protocol,
+            Some(crate::hosts::HostProtocol::OpenAi)
+        ));
+        assert_eq!(host.limit_context_length, Some(true));
+    }
+
+    #[test]
+    fn config_merge_host_with_builtin() {
+        let first_config = ConfigInput {
+            host: HashMap::from([
+                (
+                    "foo".to_string(),
+                    HostDefinitionInput {
+                        endpoint: Some("foo_endpoint".to_string()),
+                        api_key: Some("foo_key".to_string()),
+                        protocol: Some(crate::hosts::HostProtocol::OpenAi),
+                        limit_context_length: Some(true),
+                    },
+                ),
+                (
+                    "ollama".to_string(),
+                    HostDefinitionInput {
+                        endpoint: Some("ollama_endpoint".to_string()),
+                        limit_context_length: Some(false),
+                        ..Default::default()
+                    },
+                ),
+            ]),
+            ..Default::default()
+        };
+
+        let config = Config::create_config(first_config).unwrap();
+        let host = config.model.host.get("foo").unwrap();
+        assert_eq!(host.endpoint, "foo_endpoint");
+        assert_eq!(host.api_key, Some("foo_key".to_string()));
+        assert!(matches!(host.protocol, crate::hosts::HostProtocol::OpenAi));
+        assert_eq!(host.limit_context_length, true);
+
+        let host = config.model.host.get("ollama").unwrap();
+        assert_eq!(host.endpoint, "ollama_endpoint");
+        assert_eq!(host.api_key, None);
+        assert!(matches!(host.protocol, crate::hosts::HostProtocol::Ollama));
+        assert_eq!(host.limit_context_length, false);
+    }
+
+    #[test]
+    fn host_requires_endpoint() {
+        let input = ConfigInput {
+            host: HashMap::from([(
+                "foo".to_string(),
+                HostDefinitionInput {
+                    endpoint: None,
+                    api_key: Some("foo_key".to_string()),
+                    protocol: Some(crate::hosts::HostProtocol::OpenAi),
+                    limit_context_length: Some(true),
+                },
+            )]),
+            ..Default::default()
+        };
+
+        let _ = Config::create_config(input).unwrap_err();
+    }
+
+    #[test]
+    fn host_requires_protocol() {
+        let input = ConfigInput {
+            host: HashMap::from([(
+                "foo".to_string(),
+                HostDefinitionInput {
+                    endpoint: Some("foo_endpoint".to_string()),
+                    ..Default::default()
+                },
+            )]),
+            ..Default::default()
+        };
+
+        let _ = Config::create_config(input).unwrap_err();
     }
 }

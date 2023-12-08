@@ -3,6 +3,7 @@ use std::io::BufRead;
 use error_stack::{Report, ResultExt};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tracing::{event, instrument, Level};
 use ureq::Response;
 
 use super::ModelHost;
@@ -10,13 +11,17 @@ use crate::model::{map_model_response_err, ModelError, ModelOptions, OutputForma
 
 pub const DEFAULT_HOST: &str = "http://localhost:11434";
 
+#[derive(Debug)]
 pub struct OllamaHost {
     pub host: Option<String>,
+    // Ollama doesn't use an API key, but if someone puts it behind a reverse proxy this could be
+    // useful.
+    pub api_key: Option<String>,
 }
 
 impl OllamaHost {
-    pub fn new(host: Option<String>) -> Self {
-        Self { host }
+    pub fn new(host: Option<String>, api_key: Option<String>) -> Self {
+        Self { host, api_key }
     }
 
     fn host(&self) -> &str {
@@ -25,6 +30,7 @@ impl OllamaHost {
 }
 
 impl ModelHost for OllamaHost {
+    #[instrument]
     fn send_model_request(
         &self,
         options: &ModelOptions,
@@ -33,22 +39,35 @@ impl ModelHost for OllamaHost {
         message_tx: flume::Sender<String>,
     ) -> Result<(), Report<ModelError>> {
         let url = format!("{}/api/generate", self.host());
-        let response: Response = ureq::post(&url)
-            .send_json(OllamaRequest {
-                model: &options.full_model_name(),
-                prompt,
-                system,
-                format: options.format,
-                options: OllamaModelOptions {
-                    temperature: options.temperature,
-                    top_p: options.top_p,
-                    top_k: options.top_k,
-                    repeat_penalty: options.frequency_penalty,
-                    stop: options.stop.clone(),
-                    num_predict: options.max_tokens,
-                },
-                stream: true,
-            })
+
+        let request = ureq::post(&url);
+        let request = if let Some(key) = self.api_key.as_ref() {
+            request.set("Authorization", &format!("Bearer {}", key))
+        } else {
+            request
+        };
+
+        let spec = options.full_model_spec();
+        let body = OllamaRequest {
+            model: &spec.model_name(),
+            prompt,
+            system,
+            format: options.format,
+            options: OllamaModelOptions {
+                temperature: options.temperature,
+                top_p: options.top_p,
+                top_k: options.top_k,
+                repeat_penalty: options.frequency_penalty,
+                stop: options.stop.clone(),
+                num_predict: options.max_tokens,
+            },
+            stream: true,
+        };
+
+        event!(Level::INFO, body = ?body, "Sending request");
+
+        let response: Response = request
+            .send_json(body)
             .map_err(map_model_response_err)
             .attach_printable(url)?;
 
@@ -63,7 +82,7 @@ impl ModelHost for OllamaHost {
         Ok(())
     }
 
-    fn model_context_limit(&self, model: &str) -> Result<usize, Report<ModelError>> {
+    fn model_context_limit(&self, model: &str) -> Result<Option<usize>, Report<ModelError>> {
         let url = format!("{}/api/show", self.host());
         let response: ModelInfo = ureq::post(&url)
             .send_json(json!({
@@ -81,7 +100,7 @@ impl ModelHost for OllamaHost {
 
         let Some(context_param) = context_param else {
             // The default if none is specified in the modelfile.
-            return Ok(2048);
+            return Ok(Some(2048));
         };
 
         // There is at least one space after the param name, so just trim the rest to get the actual value.
@@ -90,7 +109,7 @@ impl ModelHost for OllamaHost {
             .parse::<usize>()
             .change_context(ModelError::Deserialize)?;
 
-        Ok(context_size)
+        Ok(Some(context_size))
     }
 }
 #[derive(Debug, Serialize)]

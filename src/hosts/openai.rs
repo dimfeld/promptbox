@@ -12,14 +12,22 @@ use crate::{
 
 pub const OPENAI_HOST: &str = "https://api.openai.com";
 
+#[derive(Debug)]
 pub struct OpenAiHost {
     pub api_key: Option<String>,
     pub host: Option<String>,
+    /// Whether or not to check and enforce a context length limit. Usually this is true, but some
+    /// hosts don't provide context length limit information or otherwise manage it themselves.
+    pub do_context_limit: bool,
 }
 
 impl OpenAiHost {
-    pub fn new(host: Option<String>, api_key: Option<String>) -> Self {
-        Self { api_key, host }
+    pub fn new(host: Option<String>, api_key: Option<String>, do_context_limit: bool) -> Self {
+        Self {
+            api_key,
+            host,
+            do_context_limit,
+        }
     }
 
     fn host(&self) -> &str {
@@ -67,7 +75,7 @@ impl ModelHost for OpenAiHost {
         };
 
         let mut body = json!({
-            "model": options.full_model_name(),
+            "model": options.full_model_spec().model_name(),
             "temperature": options.temperature,
             "user": "promptbox",
             "messages": messages
@@ -117,8 +125,12 @@ impl ModelHost for OpenAiHost {
         Ok(())
     }
 
-    fn model_context_limit(&self, model_name: &str) -> Result<usize, Report<ModelError>> {
-        Ok(model_context_limit(model_name))
+    fn model_context_limit(&self, model_name: &str) -> Result<Option<usize>, Report<ModelError>> {
+        if self.do_context_limit {
+            Ok(Some(model_context_limit(model_name)))
+        } else {
+            Ok(None)
+        }
     }
 }
 
@@ -130,8 +142,8 @@ struct ChatCompletionMessage {
 
 #[derive(Debug, Deserialize)]
 struct ChatCompletionChoice {
-    finish_reason: String,
-    index: i32,
+    finish_reason: Option<String>,
+    index: Option<i32>,
     message: ChatCompletionMessage,
 }
 

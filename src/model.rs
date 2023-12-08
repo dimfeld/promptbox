@@ -8,15 +8,13 @@ use crate::{
     args::GlobalRunArgs,
     context::{ContextOptions, ContextOptionsInput},
     error::Error,
-    hosts::{ollama::OllamaHost, openai::OpenAiHost, ModelHost},
+    hosts::{HostDefinition, ModelHost},
     option::{overwrite_from_option, overwrite_option_from_option, update_if_none},
 };
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct ModelOptions {
-    pub model: String,
-    pub lm_studio_host: Option<String>,
-    pub ollama_host: Option<String>,
+    pub model: ModelSpec,
     pub openai_key: Option<String>,
     pub temperature: f32,
     pub format: Option<OutputFormat>,
@@ -27,9 +25,13 @@ pub struct ModelOptions {
     pub stop: Vec<String>,
     pub max_tokens: Option<u32>,
     /// Alias of short model names to full names, useful for ollama, for example
-    pub alias: HashMap<String, String>,
+    pub alias: HashMap<String, ModelSpec>,
 
-    #[serde(default)]
+    /// Hosts parsed from the configuration
+    pub host: HashMap<String, HostDefinition>,
+    /// The default host to use for non-OpenAI models, when no other host is specified.
+    pub default_host: String,
+
     pub context: ContextOptions,
 }
 
@@ -39,9 +41,7 @@ const DEFAULT_TEMPERATURE: f32 = 0.0;
 impl Default for ModelOptions {
     fn default() -> Self {
         Self {
-            model: DEFAULT_MODEL.to_string(),
-            lm_studio_host: None,
-            ollama_host: None,
+            model: ModelSpec::default(),
             openai_key: None,
             temperature: DEFAULT_TEMPERATURE,
             format: None,
@@ -53,15 +53,47 @@ impl Default for ModelOptions {
             max_tokens: None,
             context: ContextOptions::default(),
             alias: HashMap::new(),
+            host: HostDefinition::builtin(),
+            default_host: HostDefinition::default_host().to_string().to_string(),
         }
     }
 }
 
 impl ModelOptions {
+    pub fn new(
+        value: ModelOptionsInput,
+        host: HashMap<String, HostDefinition>,
+        default_host: String,
+    ) -> Self {
+        Self {
+            model: value.model.unwrap_or_default(),
+            // For security, don't allow setting openAI key in normal config or template files.
+            openai_key: None,
+            temperature: value.temperature.unwrap_or(DEFAULT_TEMPERATURE),
+            format: value.format,
+            top_p: value.top_p,
+            top_k: value.top_k,
+            frequency_penalty: value.frequency_penalty,
+            presence_penalty: value.presence_penalty,
+            stop: value.stop.unwrap_or_default(),
+            max_tokens: value.max_tokens,
+            alias: value.alias,
+            context: value.context.into(),
+            host,
+            default_host,
+        }
+    }
+
     pub fn update_from_args(&mut self, args: &GlobalRunArgs) {
-        overwrite_from_option(&mut self.model, &args.model);
-        overwrite_option_from_option(&mut self.lm_studio_host, &args.lm_studio_host);
-        overwrite_option_from_option(&mut self.ollama_host, &args.ollama_host);
+        let model_spec = match (&args.model, &args.model_host) {
+            (Some(model), host) => Some(ModelSpec::Full {
+                model: model.clone(),
+                host: host.clone(),
+            }),
+            (_, _) => None,
+        };
+
+        overwrite_from_option(&mut self.model, &model_spec);
         overwrite_from_option(&mut self.temperature, &args.temperature);
         overwrite_option_from_option(&mut self.format, &args.format);
         overwrite_from_option(&mut self.context.keep, &args.overflow_keep);
@@ -75,30 +107,37 @@ impl ModelOptions {
         self.openai_key = args.openai_key.clone();
     }
 
-    pub fn full_model_name(&self) -> &str {
-        self.alias.get(&self.model).unwrap_or(&self.model)
+    pub fn full_model_spec(&self) -> ModelSpec {
+        self.alias
+            .get(self.model.model_name())
+            .map(|alias| self.model.merge_with_alias_spec(alias))
+            .unwrap_or_else(|| self.model.clone())
     }
 
-    pub fn api_host(&self) -> Box<dyn ModelHost> {
-        let model = self.full_model_name();
-        if model.starts_with("gpt-4") || model.starts_with("gpt-3.5-") {
-            Box::new(OpenAiHost::new(None, self.openai_key.clone()))
-        } else if model == "lm-studio" {
-            let host = self
-                .lm_studio_host
-                .clone()
-                .unwrap_or_else(|| "http://localhost:1234".to_string());
-            Box::new(OpenAiHost::new(Some(host), None))
-        } else {
-            let host = self.ollama_host.clone();
-            Box::new(OllamaHost::new(host))
-        }
+    pub fn api_host(&self) -> Result<Box<dyn ModelHost>, Error> {
+        let model_spec = self.full_model_spec();
+        let host_name = match model_spec.host_name() {
+            Some(host) => host,
+            None => {
+                let model = model_spec.model_name();
+                if model.starts_with("gpt-4") || model.starts_with("gpt-3.5-") {
+                    "openai"
+                } else if model == "lm-studio" {
+                    "lm-studio"
+                } else {
+                    &self.default_host
+                }
+            }
+        };
+
+        self.host
+            .get(host_name)
+            .ok_or(Error::UnknownModelHost(host_name.to_string()))
+            .map(|host| host.into_model_host())
     }
 
     pub fn update_from_model_input(&mut self, other: &ModelOptionsInput) {
         overwrite_from_option(&mut self.model, &other.model);
-        overwrite_option_from_option(&mut self.lm_studio_host, &other.lm_studio_host);
-        overwrite_option_from_option(&mut self.ollama_host, &other.ollama_host);
         overwrite_from_option(&mut self.temperature, &other.temperature);
         overwrite_option_from_option(&mut self.format, &other.format);
         overwrite_option_from_option(&mut self.top_p, &other.top_p);
@@ -119,17 +158,17 @@ impl ModelOptions {
     /// The returned value is the total context size minus `self.context.reserve_output`.
     /// This may do a network request for Ollama models.
     pub fn context_limit(&self) -> Result<Option<usize>, Report<Error>> {
-        let model = self.full_model_name();
+        let model = self.full_model_spec();
+        let model_name = model.model_name();
 
-        if model == "lm-studio" {
-            // LM Studio manages this itself and doesn't expose this info via its API.
-            return Ok(None);
-        }
-
-        let comms = self.api_host();
+        let comms = self.api_host()?;
         let limit = comms
-            .model_context_limit(model)
+            .model_context_limit(model_name)
             .change_context(Error::ContextLimit)?;
+
+        let Some(limit) = limit else {
+            return Ok(None);
+        };
 
         let limit = std::cmp::min(limit, self.context.limit.unwrap_or(usize::MAX));
 
@@ -140,28 +179,6 @@ impl ModelOptions {
         }
 
         Ok(Some(limit - self.context.reserve_output))
-    }
-}
-
-impl From<ModelOptionsInput> for ModelOptions {
-    fn from(value: ModelOptionsInput) -> Self {
-        Self {
-            model: value.model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
-            // For security, don't allow setting openAI key in normal config or template files.
-            openai_key: None,
-            lm_studio_host: value.lm_studio_host,
-            ollama_host: value.ollama_host,
-            temperature: value.temperature.unwrap_or(DEFAULT_TEMPERATURE),
-            format: value.format,
-            top_p: value.top_p,
-            top_k: value.top_k,
-            frequency_penalty: value.frequency_penalty,
-            presence_penalty: value.presence_penalty,
-            stop: value.stop.unwrap_or_default(),
-            max_tokens: value.max_tokens,
-            alias: value.alias,
-            context: value.context.into(),
-        }
     }
 }
 
@@ -182,10 +199,78 @@ impl FromStr for OutputFormat {
     }
 }
 
+#[derive(Deserialize, Debug, Eq, Clone)]
+#[serde(untagged)]
+pub enum ModelSpec {
+    Plain(String),
+    Full { model: String, host: Option<String> },
+}
+
+impl ModelSpec {
+    pub fn model_name(&self) -> &str {
+        match self {
+            Self::Plain(model) => model,
+            Self::Full { model, .. } => model,
+        }
+    }
+
+    pub fn host_name(&self) -> Option<&str> {
+        match self {
+            Self::Plain(_) => None,
+            Self::Full { host, .. } => host.as_deref(),
+        }
+    }
+
+    /// Given a alias spec, return a new spec that uses the model name from the alias spec
+    /// gives precedence to self for the other fields.
+    pub fn merge_with_alias_spec(&self, alias_spec: &ModelSpec) -> Self {
+        match (self, alias_spec) {
+            (ModelSpec::Plain(_), alias) => alias.clone(),
+            (ModelSpec::Full { host, .. }, ModelSpec::Plain(real_model)) => ModelSpec::Full {
+                model: real_model.clone(),
+                host: host.clone(),
+            },
+            (
+                ModelSpec::Full {
+                    host: self_host, ..
+                },
+                ModelSpec::Full {
+                    model,
+                    host: alias_host,
+                },
+            ) => ModelSpec::Full {
+                model: model.clone(),
+                host: self_host
+                    .as_ref()
+                    .map(|h| h.clone())
+                    .or_else(|| alias_host.clone()),
+            },
+        }
+    }
+}
+
+impl PartialEq for ModelSpec {
+    fn eq(&self, other: &Self) -> bool {
+        self.model_name() == other.model_name() && self.host_name() == other.host_name()
+    }
+}
+
+impl Default for ModelSpec {
+    fn default() -> Self {
+        Self::Plain(DEFAULT_MODEL.to_string())
+    }
+}
+
+impl From<String> for ModelSpec {
+    fn from(value: String) -> Self {
+        Self::Plain(value)
+    }
+}
+
 #[derive(Deserialize, Debug, Default, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct ModelOptionsInput {
-    pub model: Option<String>,
+    pub model: Option<ModelSpec>,
     pub lm_studio_host: Option<String>,
     pub ollama_host: Option<String>,
     pub temperature: Option<f32>,
@@ -198,7 +283,7 @@ pub struct ModelOptionsInput {
     pub max_tokens: Option<u32>,
     /// Alias of short model names to full names, useful for ollama, for example
     #[serde(default)]
-    pub alias: HashMap<String, String>,
+    pub alias: HashMap<String, ModelSpec>,
 
     #[serde(default)]
     pub context: ContextOptionsInput,
@@ -237,6 +322,10 @@ pub enum ModelError {
     Deserialize,
     #[error("Error {0} communicating with model API: {1}")]
     Model(u16, String),
+    #[error("Model does not exist: {0}")]
+    ModelNotFound(String),
+    #[error("Unable to format prompt")]
+    FormatPrompt,
 }
 
 pub fn map_model_response_err(err: ureq::Error) -> Report<ModelError> {
@@ -253,34 +342,152 @@ pub fn map_model_response_err(err: ureq::Error) -> Report<ModelError> {
 mod test {
     use super::*;
 
-    fn create_options(limit: Option<usize>, reserve_output: usize) -> ModelOptions {
-        ModelOptions {
-            model: "gpt-3.5-turbo-16k".to_string(),
-            context: ContextOptions {
-                limit,
-                reserve_output,
+    mod host {
+        use super::*;
+
+        #[test]
+        fn bad_default_host() {
+            let options = ModelOptions {
+                model: "a_model".to_string().into(),
+                default_host: "nonexistent_host".to_string(),
                 ..Default::default()
-            },
-            ..Default::default()
+            };
+
+            let err = options.api_host().unwrap_err();
+            assert!(matches!(err, Error::UnknownModelHost(_)));
+        }
+
+        #[test]
+        fn model_specifies_bad_host() {
+            let options = ModelOptions {
+                model: ModelSpec::Full {
+                    model: "abc".into(),
+                    host: Some("nonexistent_host".into()),
+                },
+                ..Default::default()
+            };
+
+            let err = options.api_host().unwrap_err();
+            assert!(matches!(err, Error::UnknownModelHost(_)));
+        }
+
+        #[test]
+        fn other_default_host() {
+            let options = ModelOptions {
+                model: ModelSpec::Plain("a_model".to_string()),
+                default_host: "openrouter".to_string(),
+                ..Default::default()
+            };
+
+            let host = options.api_host().unwrap();
+            // This is the easiest way to tease out the actual type.
+            let host_desc = format!("{host:?}");
+            assert!(host_desc.contains("OpenAiHost"));
         }
     }
 
-    #[test]
-    fn limit_smaller_than_model() {
-        let options = create_options(Some(10), 5);
-        assert_eq!(options.context_limit().unwrap(), Some(5));
+    mod context_length {
+        use super::*;
+
+        fn create_options(limit: Option<usize>, reserve_output: usize) -> ModelOptions {
+            ModelOptions {
+                model: "gpt-3.5-turbo-16k".to_string().into(),
+                context: ContextOptions {
+                    limit,
+                    reserve_output,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        }
+
+        #[test]
+        fn limit_smaller_than_model() {
+            let options = create_options(Some(10), 5);
+            assert_eq!(options.context_limit().unwrap(), Some(5));
+        }
+
+        #[test]
+        fn limit_larger_than_model() {
+            let options = create_options(Some(10485760), 5);
+            assert_eq!(options.context_limit().unwrap(), Some(16385 - 5));
+        }
+
+        #[test]
+        fn not_enough_reserved_output() {
+            let options = create_options(Some(20), 20);
+            let err = options.context_limit().unwrap_err();
+            assert!(matches!(err.current_context(), Error::ContextLimit));
+        }
     }
 
-    #[test]
-    fn limit_larger_than_model() {
-        let options = create_options(Some(10485760), 5);
-        assert_eq!(options.context_limit().unwrap(), Some(16385 - 5));
-    }
+    mod model_spec {
+        use crate::model::ModelSpec;
 
-    #[test]
-    fn not_enough_reserved_output() {
-        let options = create_options(Some(20), 20);
-        let err = options.context_limit().unwrap_err();
-        assert!(matches!(err.current_context(), Error::ContextLimit));
+        #[test]
+        fn merge_full_with_plain_alias() {
+            let config = ModelSpec::Full {
+                model: "abc".to_string(),
+                host: Some("def".to_string()),
+            };
+            let alias = ModelSpec::Plain("ghi".to_string());
+
+            let result = config.merge_with_alias_spec(&alias);
+            assert_eq!(
+                result,
+                ModelSpec::Full {
+                    model: "ghi".to_string(),
+                    host: Some("def".to_string())
+                }
+            );
+        }
+
+        #[test]
+        fn merge_plain_with_plain_alias() {
+            let config = ModelSpec::Plain("abc".to_string());
+            let alias = ModelSpec::Plain("ghi".to_string());
+
+            let result = config.merge_with_alias_spec(&alias);
+            assert_eq!(result, ModelSpec::Plain("ghi".to_string()));
+        }
+
+        #[test]
+        fn merge_full_with_full_alias() {
+            let config = ModelSpec::Full {
+                model: "abc".to_string(),
+                host: Some("def".to_string()),
+            };
+            let alias = ModelSpec::Full {
+                model: "ghi".to_string(),
+                host: Some("jkl".to_string()),
+            };
+
+            let result = config.merge_with_alias_spec(&alias);
+            assert_eq!(
+                result,
+                ModelSpec::Full {
+                    model: "ghi".to_string(),
+                    host: Some("def".to_string())
+                }
+            );
+        }
+
+        #[test]
+        fn merge_plain_with_full_alias() {
+            let config = ModelSpec::Plain("abc".to_string());
+            let alias = ModelSpec::Full {
+                model: "ghi".to_string(),
+                host: Some("jkl".to_string()),
+            };
+
+            let result = config.merge_with_alias_spec(&alias);
+            assert_eq!(
+                result,
+                ModelSpec::Full {
+                    model: "ghi".to_string(),
+                    host: Some("jkl".to_string())
+                }
+            );
+        }
     }
 }

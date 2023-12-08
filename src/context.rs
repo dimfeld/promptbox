@@ -356,7 +356,7 @@ mod test {
 
         fn init_test(limit: usize) -> (ModelOptions, liquid::Object, liquid::Parser, String) {
             let model_options = ModelOptions {
-                model: "gpt-3.5-turbo".to_string(),
+                model: "gpt-3.5-turbo".to_string().into(),
                 context: ContextOptions {
                     limit: Some(limit),
                     reserve_output: 0,

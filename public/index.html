@@ -533,7 +533,8 @@
 <h1>PromptBox</h1>
 </div>
 <p>PromptBox allows maintaining libraries of LLM prompt templates which can be filled in and submitted from the command
-line. It can submit prompts to the OpenAI API, <a href="https://ollama.ai" rel="noopener noreferrer">Ollama</a>, or <a href="https://lmstudio.ai/" rel="noopener noreferrer">LM Studio</a>.</p>
+line. It can submit prompts to various hosts, including <a href="https://together.ai" rel="noopener noreferrer">Together</a>,  <a href="https://ollama.ai" rel="noopener noreferrer">Ollama</a>,
+and anything compatible with the OpenAI API.</p>
 <h1>Template Files</h1>
 <ul>
 <li>are built in TOML</li>
@@ -608,17 +609,34 @@ to have it placed elsewhere in the prompt, as in this example.</p>
 <p>This can be help when using this mode with models that work best when
 their instructions are at end of the prompt.</p>
 <h2>Model Choice</h2>
-<p>PromptBox supports a few model hosts, and uses a very simple logic to choose the host:</p>
+<h3>Host Selection</h3>
+<p>PromptBox supports a few model hosts out of the box:</p>
 <ul>
-<li>Any model name starting with "gpt-3.5" or "gpt-4" will result in a call to the OpenAI API.</li>
+<li>lm-studio</li>
+<li>ollama</li>
+<li>openai</li>
+<li>openrouter</li>
+<li>together</li>
+</ul>
+<p>While the host can be chosen explicitly, PromptBox will attempt to choose a host based on the model name using this
+logic:</p>
+<ol>
+<li>Any model name starting with "gpt-3.5" or "gpt-4" will choose OpenAI.</li>
 <li>The value "lm-studio" will result in a call to LM Studio. LM Studio's API currently does not support selecting a
 model, so you will need to switch it yourself in the GUI.</li>
-<li>Any other model name indicates a model from Ollama.</li>
-</ul>
+<li>Any other model name indicates uses the default model, which is Ollama if not otherwise configured.</li>
+</ol>
+<p>See the end of this README for instructions on how to define your own hosts.</p>
+<p>The default choice of host can be overridden by specifying the model as an object which includes the host to use:</p>
+<pre style="background-color:#263238;"><span style="color:#f07178;">model </span><span style="color:#89ddff;">= { </span><span style="color:#f07178;">model </span><span style="color:#89ddff;">= "</span><span style="color:#c3e88d;">mistralai/Mistral-7B-v0.1</span><span style="color:#89ddff;">", </span><span style="color:#f07178;">host </span><span style="color:#89ddff;">= "</span><span style="color:#c3e88d;">together</span><span style="color:#89ddff;">" }
+</span></pre>
+
+<h3>Aliases</h3>
 <p>Models can use aliases as well. In either the template or a configuration file, you can add an <code>model.alias</code> section.</p>
 <pre style="background-color:#263238;"><span style="color:#89ddff;">[model.alias]
 </span><span style="color:#f07178;">phind </span><span style="color:#89ddff;">= "</span><span style="color:#c3e88d;">phind-codellama:34b-v2-q5_K_M</span><span style="color:#89ddff;">"
 </span><span style="color:#f07178;">deepseek </span><span style="color:#89ddff;">= "</span><span style="color:#c3e88d;">deepseek-coder:7b</span><span style="color:#89ddff;">"
+</span><span style="color:#f07178;">together-mistral </span><span style="color:#89ddff;">= { </span><span style="color:#f07178;">model </span><span style="color:#89ddff;">= "</span><span style="color:#c3e88d;">mistralai/Mistral-7B-v0.1</span><span style="color:#89ddff;">", </span><span style="color:#f07178;">host </span><span style="color:#89ddff;">= "</span><span style="color:#c3e88d;">together</span><span style="color:#89ddff;">" }
 </span></pre>
 
 <p>These model aliases can then be used in place of the actual model name.</p>
@@ -670,9 +688,42 @@ it does not set itself. All settings in a configuration file are optional.</p>
 </span><span style="font-style:italic;color:#546e7a;"># Set this to false to tell PromptBox to not read the global configuration file.
 </span><span style="color:#f07178;">use_global_config </span><span style="color:#89ddff;">= </span><span style="color:#f78c6c;">true
 </span><span style="color:#eeffff;">
+</span><span style="font-style:italic;color:#546e7a;"># Use this host for models that aren't otherwise specified and aren't "lm-studio" or a GPT-3.5/4 model.
+</span><span style="color:#f07178;">default_host </span><span style="color:#89ddff;">= "</span><span style="color:#c3e88d;">ollama</span><span style="color:#89ddff;">"
+</span><span style="color:#eeffff;">
 </span><span style="color:#89ddff;">[model]
 </span><span style="font-style:italic;color:#546e7a;"># Set a default model. All the other options from the template's `model` section can be used here.
 </span><span style="color:#f07178;">model </span><span style="color:#89ddff;">= "</span><span style="color:#c3e88d;">gpt-3.5-turbo</span><span style="color:#89ddff;">"
+</span></pre>
+
+<h2>Custom Hosts</h2>
+<p>In addition to the built-in hosts, PromptBox supports adding additional hosts using this format in the configuration
+file:</p>
+<pre style="background-color:#263238;"><span style="color:#89ddff;">[host.my_custom_host]
+</span><span style="font-style:italic;color:#546e7a;"># The base URL to use for the API.
+</span><span style="color:#f07178;">endpoint </span><span style="color:#89ddff;">= "</span><span style="color:#c3e88d;">https://super-fast-llm.example.com/api</span><span style="color:#89ddff;">"
+</span><span style="color:#eeffff;">
+</span><span style="font-style:italic;color:#546e7a;"># protocol can be openai, ollama, or together
+</span><span style="color:#f07178;">protocol </span><span style="color:#89ddff;">= "</span><span style="color:#c3e88d;">openai</span><span style="color:#89ddff;">"
+</span><span style="color:#eeffff;">
+</span><span style="font-style:italic;color:#546e7a;"># Whether or not PromptBox should limit the context length sent to the host.
+</span><span style="font-style:italic;color:#546e7a;"># Some hosts do not provide good information on this, or have their own methods of context
+</span><span style="font-style:italic;color:#546e7a;"># compression.
+</span><span style="color:#f07178;">limit_context_length </span><span style="color:#89ddff;">= </span><span style="color:#f78c6c;">true
+</span><span style="color:#eeffff;">
+</span><span style="font-style:italic;color:#546e7a;"># The name of the environment variable that holds the API key. To promote good security hygiene,
+</span><span style="font-style:italic;color:#546e7a;"># it is not possible to embed the key directly in the configuration file.
+</span><span style="font-style:italic;color:#546e7a;"># This can be omitted if an API key is not required for the host.
+</span><span style="color:#f07178;">api_key </span><span style="color:#89ddff;">= "</span><span style="color:#c3e88d;">MY_HOST_API_KEY</span><span style="color:#89ddff;">"
+</span></pre>
+
+<p>The custom host can then be used by setting <code>default_host = "my_custom_host"</code> or by setting the host on individual models,
+as described above.</p>
+<h3>Modifying Built-In hosts</h3>
+<p>This syntax can also be used to change the behavior of built-in hosts. For example, this would change the endpoint used
+for the Ollama host:</p>
+<pre style="background-color:#263238;"><span style="color:#89ddff;">[host.ollama]
+</span><span style="color:#f07178;">endpoint </span><span style="color:#89ddff;">= "</span><span style="color:#c3e88d;">http://localhost:12345</span><span style="color:#89ddff;">"
 </span></pre>
 
 

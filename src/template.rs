@@ -347,7 +347,7 @@ optvalue
 
         let options = template.input.model;
 
-        assert_eq!(options.model, Some("abc".to_string()));
+        assert_eq!(options.model, Some("abc".to_string().into()));
         assert_eq!(
             options.lm_studio_host,
             Some("http://localhost:9998".to_string())
@@ -366,12 +366,12 @@ optvalue
         assert_eq!(options.max_tokens, Some(30));
 
         let mut aliases = options.alias.iter().collect::<Vec<_>>();
-        aliases.sort();
+        aliases.sort_by_key(|x| x.0);
         assert_eq!(
             aliases,
             vec![
-                (&"llama2".to_string(), &"llama2:456".to_string()),
-                (&"mistral".to_string(), &"mistral:123".to_string()),
+                (&"llama2".to_string(), &"llama2:456".to_string().into()),
+                (&"mistral".to_string(), &"mistral:123".to_string().into()),
             ]
         );
 
@@ -416,7 +416,7 @@ optvalue
         )
         .expect("generate_template");
 
-        assert_eq!(model_options.model, "gpt-3.5-turbo-1106".to_string());
+        assert_eq!(model_options.model, "gpt-3.5-turbo-1106".to_string().into());
         assert_eq!(model_options.temperature, 0.9);
         assert_eq!(model_options.context.limit, Some(10));
         assert_eq!(model_options.context.reserve_output, 5);
