@@ -1,3 +1,8 @@
+## 0.2.0
+
+- Support Together and OpenRouter.
+- Add ability to configure more hosts.
+
 ## 0.1.2
 
 - Add exponential backoff when rate limited
