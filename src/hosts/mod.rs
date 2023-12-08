@@ -76,6 +76,7 @@ impl HostDefinition {
         overwrite_from_option(&mut self.endpoint, &other.endpoint);
         overwrite_from_option(&mut self.protocol, &other.protocol);
         overwrite_option_from_option(&mut self.api_key, &other.api_key);
+        overwrite_from_option(&mut self.limit_context_length, &other.limit_context_length);
     }
 
     pub fn default_host() -> &'static str {
@@ -146,7 +147,7 @@ impl TryFrom<HostDefinitionInput> for HostDefinition {
     }
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Default, Debug, Clone)]
 pub struct HostDefinitionInput {
     pub endpoint: Option<String>,
     pub api_key: Option<String>,
