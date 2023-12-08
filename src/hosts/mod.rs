@@ -11,6 +11,7 @@ use crate::{
 
 pub mod ollama;
 pub mod openai;
+mod together;
 
 pub trait ModelHost: std::fmt::Debug {
     fn send_model_request(
@@ -31,6 +32,7 @@ pub enum HostProtocol {
     Ollama,
     #[serde(rename = "openai")]
     OpenAi,
+    Together,
 }
 
 impl HostProtocol {
@@ -40,6 +42,7 @@ impl HostProtocol {
             // There's no API for getting the context length here. For real OpenAI we set this to
             // true though.
             HostProtocol::OpenAi => false,
+            HostProtocol::Together => true,
         }
     }
 }
@@ -69,6 +72,7 @@ impl HostDefinition {
                 key,
                 self.limit_context_length,
             )),
+            HostProtocol::Together => Box::new(together::TogetherHost::new(endpoint, key)),
         }
     }
 
@@ -116,10 +120,19 @@ impl HostDefinition {
             (
                 "openrouter".to_string(),
                 HostDefinition {
-                    endpoint: "https://api.openrouter.ai/api".to_string(),
+                    endpoint: "https://openrouter.ai/api".to_string(),
                     protocol: HostProtocol::OpenAi,
                     limit_context_length: false,
                     api_key: Some("OPENROUTER_API_KEY".to_string()),
+                },
+            ),
+            (
+                "together".to_string(),
+                HostDefinition {
+                    endpoint: together::DEFAULT_HOST.to_string(),
+                    protocol: HostProtocol::Together,
+                    limit_context_length: true,
+                    api_key: Some("TOGETHER_API_KEY".to_string()),
                 },
             ),
         ]

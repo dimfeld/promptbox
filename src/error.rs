@@ -26,6 +26,8 @@ pub enum Error {
     ContextLimit,
     #[error("Failed reading input")]
     Io,
+    #[error("Failed to access local cache")]
+    Cache,
     #[error(transparent)]
     CmdlineParseFailure(#[from] clap::Error),
     #[error("Failed to encode tokens")]

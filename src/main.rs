@@ -10,6 +10,7 @@ use model::ModelOptions;
 use template::{assemble_template, render_template, ParsedTemplate};
 
 mod args;
+mod cache;
 mod config;
 mod context;
 mod error;

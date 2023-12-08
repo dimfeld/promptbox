@@ -332,6 +332,8 @@ pub enum ModelError {
     Deserialize,
     #[error("Error {0} communicating with model API: {1}")]
     Model(u16, String),
+    #[error("Model does not exist: {0}")]
+    ModelNotFound(String),
 }
 
 pub fn map_model_response_err(err: ureq::Error) -> Report<ModelError> {

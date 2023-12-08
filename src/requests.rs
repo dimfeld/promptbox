@@ -30,3 +30,11 @@ pub fn request_with_retry(
         }
     }
 }
+
+pub fn add_bearer_token(req: ureq::Request, token: &Option<String>) -> ureq::Request {
+    if let Some(token) = token.as_ref() {
+        req.set("Authorization", &format!("Bearer {token}"))
+    } else {
+        req
+    }
+}
