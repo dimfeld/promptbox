@@ -10,6 +10,7 @@ use crate::model::{map_model_response_err, ModelError, ModelOptions, OutputForma
 
 pub const DEFAULT_HOST: &str = "http://localhost:11434";
 
+#[derive(Debug)]
 pub struct OllamaHost {
     pub host: Option<String>,
     // Ollama doesn't use an API key, but if someone puts it behind a reverse proxy this could be

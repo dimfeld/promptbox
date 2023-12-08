@@ -12,6 +12,7 @@ use crate::{
 
 pub const OPENAI_HOST: &str = "https://api.openai.com";
 
+#[derive(Debug)]
 pub struct OpenAiHost {
     pub api_key: Option<String>,
     pub host: Option<String>,

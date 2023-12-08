@@ -12,7 +12,7 @@ use crate::{
 pub mod ollama;
 pub mod openai;
 
-pub trait ModelHost {
+pub trait ModelHost: std::fmt::Debug {
     fn send_model_request(
         &self,
         options: &ModelOptions,

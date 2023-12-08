@@ -2,7 +2,17 @@ templates = ["."]
 top_level = true
 use_global_config = false
 
+default_host = "my_ollama_host"
+
 [model]
 model = "gpt-3.5-turbo"
 temperature = 0.4
 top_p = 2
+
+[host.my_ollama_host]
+endpoint = "http://localhost:9999"
+protocol = "ollama"
+
+[host.my_openai_host]
+endpoint = "http://localhost:9998"
+protocol = "openai"

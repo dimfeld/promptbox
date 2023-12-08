@@ -348,35 +348,83 @@ pub fn map_model_response_err(err: ureq::Error) -> Report<ModelError> {
 mod test {
     use super::*;
 
-    fn create_options(limit: Option<usize>, reserve_output: usize) -> ModelOptions {
-        ModelOptions {
-            model: "gpt-3.5-turbo-16k".to_string().into(),
-            context: ContextOptions {
-                limit,
-                reserve_output,
+    mod host {
+        use super::*;
+
+        #[test]
+        fn bad_default_host() {
+            let options = ModelOptions {
+                model: "a_model".to_string().into(),
+                default_host: "nonexistent_host".to_string(),
                 ..Default::default()
-            },
-            ..Default::default()
+            };
+
+            let err = options.api_host().unwrap_err();
+            assert!(matches!(err, Error::UnknownModelHost(_)));
+        }
+
+        #[test]
+        fn model_specifies_bad_host() {
+            let options = ModelOptions {
+                model: ModelSpec::Full {
+                    model: "abc".into(),
+                    host: Some("nonexistent_host".into()),
+                },
+                ..Default::default()
+            };
+
+            let err = options.api_host().unwrap_err();
+            assert!(matches!(err, Error::UnknownModelHost(_)));
+        }
+
+        #[test]
+        fn other_default_host() {
+            let options = ModelOptions {
+                model: ModelSpec::Plain("a_model".to_string()),
+                default_host: "openrouter".to_string(),
+                ..Default::default()
+            };
+
+            let host = options.api_host().unwrap();
+            // This is the easiest way to tease out the actual type.
+            let host_desc = format!("{host:?}");
+            assert!(host_desc.contains("OpenAiHost"));
         }
     }
 
-    #[test]
-    fn limit_smaller_than_model() {
-        let options = create_options(Some(10), 5);
-        assert_eq!(options.context_limit().unwrap(), Some(5));
-    }
+    mod context_length {
+        use super::*;
 
-    #[test]
-    fn limit_larger_than_model() {
-        let options = create_options(Some(10485760), 5);
-        assert_eq!(options.context_limit().unwrap(), Some(16385 - 5));
-    }
+        fn create_options(limit: Option<usize>, reserve_output: usize) -> ModelOptions {
+            ModelOptions {
+                model: "gpt-3.5-turbo-16k".to_string().into(),
+                context: ContextOptions {
+                    limit,
+                    reserve_output,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        }
 
-    #[test]
-    fn not_enough_reserved_output() {
-        let options = create_options(Some(20), 20);
-        let err = options.context_limit().unwrap_err();
-        assert!(matches!(err.current_context(), Error::ContextLimit));
+        #[test]
+        fn limit_smaller_than_model() {
+            let options = create_options(Some(10), 5);
+            assert_eq!(options.context_limit().unwrap(), Some(5));
+        }
+
+        #[test]
+        fn limit_larger_than_model() {
+            let options = create_options(Some(10485760), 5);
+            assert_eq!(options.context_limit().unwrap(), Some(16385 - 5));
+        }
+
+        #[test]
+        fn not_enough_reserved_output() {
+            let options = create_options(Some(20), 20);
+            let err = options.context_limit().unwrap_err();
+            assert!(matches!(err.current_context(), Error::ContextLimit));
+        }
     }
 
     mod model_spec {
