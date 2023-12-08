@@ -23,6 +23,7 @@ mod requests;
 mod template;
 #[cfg(test)]
 mod tests;
+mod tracing;
 
 fn generate_template(
     base_dir: PathBuf,
@@ -143,6 +144,8 @@ fn run(base_dir: PathBuf, cmdline: Vec<OsString>) -> Result<(), Report<Error>> {
 }
 
 fn main() -> Result<(), Report<Error>> {
+    tracing::configure();
+
     // Don't show file locations in release mode
     #[cfg(not(debug_assertions))]
     error_stack::Report::install_debug_hook::<std::panic::Location>(|_, _| {});

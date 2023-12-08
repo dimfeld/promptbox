@@ -3,6 +3,7 @@ use std::io::BufRead;
 use error_stack::{Report, ResultExt};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tracing::{event, instrument, Level};
 use ureq::Response;
 
 use super::ModelHost;
@@ -29,6 +30,7 @@ impl OllamaHost {
 }
 
 impl ModelHost for OllamaHost {
+    #[instrument]
     fn send_model_request(
         &self,
         options: &ModelOptions,
@@ -45,22 +47,27 @@ impl ModelHost for OllamaHost {
             request
         };
 
+        let spec = options.full_model_spec();
+        let body = OllamaRequest {
+            model: &spec.model_name(),
+            prompt,
+            system,
+            format: options.format,
+            options: OllamaModelOptions {
+                temperature: options.temperature,
+                top_p: options.top_p,
+                top_k: options.top_k,
+                repeat_penalty: options.frequency_penalty,
+                stop: options.stop.clone(),
+                num_predict: options.max_tokens,
+            },
+            stream: true,
+        };
+
+        event!(Level::INFO, body = ?body, "Sending request");
+
         let response: Response = request
-            .send_json(OllamaRequest {
-                model: &options.full_model_spec().model_name(),
-                prompt,
-                system,
-                format: options.format,
-                options: OllamaModelOptions {
-                    temperature: options.temperature,
-                    top_p: options.top_p,
-                    top_k: options.top_k,
-                    repeat_penalty: options.frequency_penalty,
-                    stop: options.stop.clone(),
-                    num_predict: options.max_tokens,
-                },
-                stream: true,
-            })
+            .send_json(body)
             .map_err(map_model_response_err)
             .attach_printable(url)?;
 

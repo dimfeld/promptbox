@@ -1,9 +1,8 @@
-use std::{borrow::Cow, cell::OnceCell, io::BufRead, time::Duration};
+use std::{cell::OnceCell, time::Duration};
 
 use error_stack::{Report, ResultExt};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use ureq::Response;
+use tracing::{event, instrument, Level};
 
 use super::ModelHost;
 use crate::{
@@ -123,13 +122,23 @@ impl TogetherHost {
                 message_array: true,
             };
 
-            apply_chat_template(template, prompt, system, config.add_generation_prompt)
+            apply_chat_template(
+                template,
+                prompt,
+                system,
+                config.add_generation_prompt.unwrap_or(false),
+            )
         } else if let Some(template) = config
             .chat_template_name
             .as_deref()
             .and_then(builtin_chat_template)
         {
-            apply_chat_template(template, prompt, system, config.add_generation_prompt)
+            apply_chat_template(
+                template,
+                prompt,
+                system,
+                config.add_generation_prompt.unwrap_or(false),
+            )
         } else {
             Ok(self.fuse_system_prompt(&config.pre_prompt, prompt, system))
         }
@@ -137,6 +146,7 @@ impl TogetherHost {
 }
 
 impl ModelHost for TogetherHost {
+    #[instrument]
     fn send_model_request(
         &self,
         options: &ModelOptions,
@@ -174,6 +184,8 @@ impl ModelHost for TogetherHost {
             max_tokens: options.max_tokens.unwrap_or(2048),
             stream: false,
         };
+
+        event!(Level::INFO, prompt = %prompt, body=?body, "Sending request");
 
         let url = format!("{}/inference", self.host());
         let request = add_bearer_token(ureq::post(&url), &self.api_key);
@@ -245,12 +257,13 @@ struct TogetherChoice {
 struct ModelInfo {
     context_length: Option<u32>,
     name: String,
+    #[serde(default)]
     config: ModelConfig,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 struct ModelConfig {
-    add_generation_prompt: bool,
+    add_generation_prompt: Option<bool>,
     chat_template_name: Option<String>,
     chat_template: Option<String>,
     pre_prompt: Option<String>,

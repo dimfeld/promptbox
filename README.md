@@ -5,7 +5,8 @@
 </div>
 
 PromptBox allows maintaining libraries of LLM prompt templates which can be filled in and submitted from the command
-line. It can submit prompts to the OpenAI API, [Ollama](https://ollama.ai), or [LM Studio](https://lmstudio.ai/).
+line. It can submit prompts to various hosts, including [Together](https://together.ai),  [Ollama](https://ollama.ai),
+and anything compatible with the OpenAI API.
 
 # Template Files
 
@@ -89,23 +90,45 @@ their instructions are at end of the prompt.
 
 ## Model Choice
 
-PromptBox supports a few model hosts, and uses a very simple logic to choose the host:
+### Host Selection
 
-- Any model name starting with "gpt-3.5" or "gpt-4" will result in a call to the OpenAI API.
-- The value "lm-studio" will result in a call to LM Studio. LM Studio's API currently does not support selecting a
+PromptBox supports a few model hosts out of the box:
+
+- lm-studio
+- ollama
+- openai
+- openrouter
+- together
+
+While the host can be chosen explicitly, PromptBox will attempt to choose a host based on the model name using this
+logic:
+
+1. Any model name starting with "gpt-3.5" or "gpt-4" will choose OpenAI.
+2. The value "lm-studio" will result in a call to LM Studio. LM Studio's API currently does not support selecting a
     model, so you will need to switch it yourself in the GUI.
-- Any other model name indicates a model from Ollama.
+3. Any other model name indicates uses the default model, which is Ollama if not otherwise configured.
+
+See the end of this README for instructions on how to define your own hosts.
+
+The default choice of host can be overridden by specifying the model as an object which includes the host to use:
+
+```toml
+model = { model = "mistralai/Mistral-7B-v0.1", host = "together" }
+```
+
+### Aliases
 
 Models can use aliases as well. In either the template or a configuration file, you can add an `model.alias` section.
-
 
 ```toml
 [model.alias]
 phind = "phind-codellama:34b-v2-q5_K_M"
 deepseek = "deepseek-coder:7b"
+together-mistral = { model = "mistralai/Mistral-7B-v0.1", host = "together" }
 ```
 
 These model aliases can then be used in place of the actual model name.
+
 
 ## Context Length Management
 
@@ -165,8 +188,48 @@ top_level = false
 # Set this to false to tell PromptBox to not read the global configuration file.
 use_global_config = true
 
+# Use this host for models that aren't otherwise specified and aren't "lm-studio" or a GPT-3.5/4 model.
+default_host = "ollama"
+
 [model]
 # Set a default model. All the other options from the template's `model` section can be used here.
 model = "gpt-3.5-turbo"
+```
+
+## Custom Hosts
+
+In addition to the built-in hosts, PromptBox supports adding additional hosts using this format in the configuration
+file:
+
+```toml
+[host.my_custom_host]
+# The base URL to use for the API.
+endpoint = "https://super-fast-llm.example.com/api"
+
+# protocol can be openai, ollama, or together
+protocol = "openai"
+
+# Whether or not PromptBox should limit the context length sent to the host.
+# Some hosts do not provide good information on this, or have their own methods of context
+# compression.
+limit_context_length = true
+
+# The name of the environment variable that holds the API key. To promote good security hygiene,
+# it is not possible to embed the key directly in the configuration file.
+# This can be omitted if an API key is not required for the host.
+api_key = "MY_HOST_API_KEY"
+```
+
+The custom host can then be used by setting `default_host = "my_custom_host"` or by setting the host on individual models,
+as described above.
+
+### Modifying Built-In hosts
+
+This syntax can also be used to change the behavior of built-in hosts. For example, this would change the endpoint used
+for the Ollama host:
+
+```toml
+[host.ollama]
+endpoint = "http://localhost:12345"
 ```
 

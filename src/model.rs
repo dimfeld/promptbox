@@ -15,8 +15,6 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct ModelOptions {
     pub model: ModelSpec,
-    pub lm_studio_host: Option<String>,
-    pub ollama_host: Option<String>,
     pub openai_key: Option<String>,
     pub temperature: f32,
     pub format: Option<OutputFormat>,
@@ -44,8 +42,6 @@ impl Default for ModelOptions {
     fn default() -> Self {
         Self {
             model: ModelSpec::default(),
-            lm_studio_host: None,
-            ollama_host: None,
             openai_key: None,
             temperature: DEFAULT_TEMPERATURE,
             format: None,
@@ -73,8 +69,6 @@ impl ModelOptions {
             model: value.model.unwrap_or_default(),
             // For security, don't allow setting openAI key in normal config or template files.
             openai_key: None,
-            lm_studio_host: value.lm_studio_host,
-            ollama_host: value.ollama_host,
             temperature: value.temperature.unwrap_or(DEFAULT_TEMPERATURE),
             format: value.format,
             top_p: value.top_p,
@@ -100,8 +94,6 @@ impl ModelOptions {
         };
 
         overwrite_from_option(&mut self.model, &model_spec);
-        overwrite_option_from_option(&mut self.lm_studio_host, &args.lm_studio_host);
-        overwrite_option_from_option(&mut self.ollama_host, &args.ollama_host);
         overwrite_from_option(&mut self.temperature, &args.temperature);
         overwrite_option_from_option(&mut self.format, &args.format);
         overwrite_from_option(&mut self.context.keep, &args.overflow_keep);
@@ -146,8 +138,6 @@ impl ModelOptions {
 
     pub fn update_from_model_input(&mut self, other: &ModelOptionsInput) {
         overwrite_from_option(&mut self.model, &other.model);
-        overwrite_option_from_option(&mut self.lm_studio_host, &other.lm_studio_host);
-        overwrite_option_from_option(&mut self.ollama_host, &other.ollama_host);
         overwrite_from_option(&mut self.temperature, &other.temperature);
         overwrite_option_from_option(&mut self.format, &other.format);
         overwrite_option_from_option(&mut self.top_p, &other.top_p);
