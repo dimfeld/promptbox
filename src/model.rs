@@ -378,4 +378,74 @@ mod test {
         let err = options.context_limit().unwrap_err();
         assert!(matches!(err.current_context(), Error::ContextLimit));
     }
+
+    mod model_spec {
+        use crate::model::ModelSpec;
+
+        #[test]
+        fn merge_full_with_plain_alias() {
+            let config = ModelSpec::Full {
+                model: "abc".to_string(),
+                host: Some("def".to_string()),
+            };
+            let alias = ModelSpec::Plain("ghi".to_string());
+
+            let result = config.merge_with_alias_spec(&alias);
+            assert_eq!(
+                result,
+                ModelSpec::Full {
+                    model: "ghi".to_string(),
+                    host: Some("def".to_string())
+                }
+            );
+        }
+
+        #[test]
+        fn merge_plain_with_plain_alias() {
+            let config = ModelSpec::Plain("abc".to_string());
+            let alias = ModelSpec::Plain("ghi".to_string());
+
+            let result = config.merge_with_alias_spec(&alias);
+            assert_eq!(result, ModelSpec::Plain("ghi".to_string()));
+        }
+
+        #[test]
+        fn merge_full_with_full_alias() {
+            let config = ModelSpec::Full {
+                model: "abc".to_string(),
+                host: Some("def".to_string()),
+            };
+            let alias = ModelSpec::Full {
+                model: "ghi".to_string(),
+                host: Some("jkl".to_string()),
+            };
+
+            let result = config.merge_with_alias_spec(&alias);
+            assert_eq!(
+                result,
+                ModelSpec::Full {
+                    model: "ghi".to_string(),
+                    host: Some("def".to_string())
+                }
+            );
+        }
+
+        #[test]
+        fn merge_plain_with_full_alias() {
+            let config = ModelSpec::Plain("abc".to_string());
+            let alias = ModelSpec::Full {
+                model: "ghi".to_string(),
+                host: Some("jkl".to_string()),
+            };
+
+            let result = config.merge_with_alias_spec(&alias);
+            assert_eq!(
+                result,
+                ModelSpec::Full {
+                    model: "ghi".to_string(),
+                    host: Some("jkl".to_string())
+                }
+            );
+        }
+    }
 }
