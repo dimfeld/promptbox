@@ -8,6 +8,7 @@ use ureq::Response;
 use super::ModelHost;
 use crate::{
     cache::Cache,
+    chat_template::{apply_chat_template, builtin_chat_template, ChatTemplate},
     model::{map_model_response_err, ModelError, ModelOptions, OutputFormat},
     requests::{add_bearer_token, request_with_retry},
 };
@@ -90,13 +91,19 @@ impl TogetherHost {
 
     fn fuse_system_prompt<'slf, 'a>(
         &'slf self,
+        preprompt: &Option<String>,
         prompt: &'a str,
         system: Option<&'a str>,
-    ) -> Cow<'a, str> {
-        if let Some(system) = system {
-            Cow::Owned(format!("{}\n\n{}", system, prompt))
-        } else {
-            Cow::Borrowed(prompt)
+    ) -> String {
+        let preprompt = preprompt.as_ref().filter(|s| !s.is_empty());
+        let system = system.filter(|s| !s.is_empty());
+        match (preprompt, system) {
+            (Some(preprompt), Some(system)) => {
+                format!("{}{}\n\n{}", preprompt, system, prompt)
+            }
+            (Some(preprompt), None) => format!("{}{}", preprompt, prompt),
+            (None, Some(system)) => format!("{}\n\n{}", system, prompt),
+            (None, None) => prompt.into(),
         }
     }
 
@@ -105,26 +112,26 @@ impl TogetherHost {
         config: &'slf ModelConfig,
         prompt: &'a str,
         system: Option<&'a str>,
-    ) -> Cow<'a, str> {
-        // Look at chat_template
-        if let Some(template) = config.chat_template.as_ref() {
-            // TODO This is jinja format, check out https://lib.rs/crates/minijinja
-            todo!("Format from jinja format");
-        }
+    ) -> Result<String, minijinja::Error> {
+        if let Some(prompt_format) = config.prompt_format.as_ref() {
+            let prompt = prompt_format.replace("{prompt}", &prompt);
+            Ok(self.fuse_system_prompt(&config.pre_prompt, &prompt, system))
+        } else if let Some(template) = config.chat_template.as_ref() {
+            let template = ChatTemplate {
+                template,
+                stop: None,
+                message_array: true,
+            };
 
-        let chat_template_name = config.chat_template_name.as_deref().unwrap_or_default();
-        if !chat_template_name.is_empty() && chat_template_name != "default" {
-            todo!("Look at chat template name");
-        }
-
-        // If we get down here then there is no special handling of system prompt, so paste them
-        // together.
-        let prompt = self.fuse_system_prompt(prompt, system);
-
-        if let Some(template) = config.prompt_format.as_ref() {
-            Cow::from(template.replace("{prompt}", &prompt))
+            apply_chat_template(template, prompt, system, config.add_generation_prompt)
+        } else if let Some(template) = config
+            .chat_template_name
+            .as_deref()
+            .and_then(builtin_chat_template)
+        {
+            apply_chat_template(template, prompt, system, config.add_generation_prompt)
         } else {
-            prompt
+            Ok(self.fuse_system_prompt(&config.pre_prompt, prompt, system))
         }
     }
 }
@@ -141,7 +148,9 @@ impl ModelHost for TogetherHost {
         let model_name = full_spec.model_name();
         let model_info = self.get_model_info(model_name)?;
 
-        let prompt = self.format_prompt(&model_info.config, prompt, system);
+        let prompt = self
+            .format_prompt(&model_info.config, prompt, system)
+            .change_context(ModelError::FormatPrompt)?;
 
         let mut stop = options.stop.clone();
         if let Some(model_stop) = model_info.config.stop.as_ref() {
@@ -241,8 +250,10 @@ struct ModelInfo {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct ModelConfig {
+    add_generation_prompt: bool,
     chat_template_name: Option<String>,
     chat_template: Option<String>,
+    pre_prompt: Option<String>,
     prompt_format: Option<String>,
     stop: Option<Vec<String>>,
 }

@@ -11,6 +11,7 @@ use template::{assemble_template, render_template, ParsedTemplate};
 
 mod args;
 mod cache;
+mod chat_template;
 mod config;
 mod context;
 mod error;

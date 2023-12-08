@@ -334,6 +334,8 @@ pub enum ModelError {
     Model(u16, String),
     #[error("Model does not exist: {0}")]
     ModelNotFound(String),
+    #[error("Unable to format prompt")]
+    FormatPrompt,
 }
 
 pub fn map_model_response_err(err: ureq::Error) -> Report<ModelError> {

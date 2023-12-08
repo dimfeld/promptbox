@@ -899,6 +899,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "minijinja"
+version = "1.0.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "208758577ef2c86cf5dd3e85730d161413ec3284e2d73b2ef65d9a24d9971bcb"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1166,11 +1175,13 @@ dependencies = [
  "flume",
  "itertools 0.11.0",
  "liquid",
+ "minijinja",
  "regex",
  "rusqlite",
  "rusqlite_migration",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
  "tokenizers",
  "toml",
