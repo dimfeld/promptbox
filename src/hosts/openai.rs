@@ -142,8 +142,8 @@ struct ChatCompletionMessage {
 
 #[derive(Debug, Deserialize)]
 struct ChatCompletionChoice {
-    finish_reason: String,
-    index: i32,
+    finish_reason: Option<String>,
+    index: Option<i32>,
     message: ChatCompletionMessage,
 }
 
