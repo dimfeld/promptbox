@@ -136,7 +136,7 @@ pub fn parse_template_args(
     cmdline: Vec<OsString>,
     base_dir: &Path,
     template: &PromptTemplate,
-) -> Result<(GlobalRunArgs, liquid::Object), Report<Error>> {
+) -> Result<(GlobalRunArgs, serde_json::Value), Report<Error>> {
     let args = template
         .options
         .iter()
@@ -189,7 +189,7 @@ pub fn parse_template_args(
         .cloned()
         .ok_or(Error::ArgParseFailure)?;
 
-    let mut context = liquid::Object::new();
+    let mut context = serde_json::json!({});
     for (name, option) in &template.options {
         match option.option_type {
             OptionType::Bool => add_val_to_context::<bool>(&mut context, &mut parsed, name, option),
@@ -210,14 +210,14 @@ pub fn parse_template_args(
                         .map(|path| create_file_object(base_dir, &path))
                         .collect::<Result<Vec<_>, _>>()
                         .change_context(Error::ArgParseFailure)?;
-                    context.insert(name.into(), liquid::model::Value::Array(values));
+                    context[name] = serde_json::Value::Array(values);
                 } else {
                     let val = parsed
                         .remove_one::<PathBuf>(name)
                         .map(|path| create_file_object(base_dir, &path))
                         .transpose()
                         .change_context(Error::ArgParseFailure)?;
-                    context.insert(name.into(), val.unwrap_or(liquid::model::Value::Nil));
+                    context[name] = val.unwrap_or(serde_json::Value::Null);
                 }
             }
         }
@@ -232,46 +232,41 @@ pub fn parse_template_args(
 fn create_file_object(
     base_dir: &Path,
     path: &Path,
-) -> Result<liquid::model::Value, Report<std::io::Error>> {
+) -> Result<serde_json::Value, Report<std::io::Error>> {
     let contents = std::fs::read_to_string(base_dir.join(path).canonicalize()?)
         .attach_printable_lazy(|| format!("Could not read file: {}", path.display()))?;
 
-    let obj = liquid::object!({
+    let obj = serde_json::json!({
         "filename": path.file_name().map(|s| s.to_string_lossy()).unwrap_or_default(),
         "path": path.to_string_lossy().to_owned(),
         "contents": contents
     });
 
-    Ok(liquid::model::Value::Object(obj))
+    Ok(obj)
 }
 
-fn add_val_to_context<
-    T: Clone + Send + Sync + Into<liquid::model::ScalarCow<'static>> + 'static,
->(
-    context: &mut liquid::Object,
+fn add_val_to_context<T: Clone + Send + Sync + Into<serde_json::Value> + 'static>(
+    context: &mut serde_json::Value,
     args: &mut ArgMatches,
     name: &str,
     option: &PromptOption,
 ) {
     let val = if option.array {
         if let Some(vals) = args.remove_many::<T>(name) {
-            let vals = vals
-                .into_iter()
-                .map(|val| liquid::model::Value::scalar(val))
-                .collect();
-            liquid::model::Value::Array(vals)
+            let vals = vals.into_iter().map(Into::into).collect::<Vec<_>>();
+            serde_json::Value::from(vals)
         } else {
             option
                 .default
                 .clone()
-                .unwrap_or_else(|| liquid::model::Value::array(vec![]))
+                .unwrap_or_else(|| serde_json::Value::Array(vec![]))
         }
     } else {
         args.remove_one::<T>(name)
-            .map(liquid::model::Value::scalar)
+            .map(Into::into)
             .or_else(|| option.default.clone())
-            .unwrap_or(liquid::model::Value::Nil)
+            .unwrap_or(serde_json::Value::Null)
     };
 
-    context.insert(name.to_string().into(), val);
+    context[name] = val;
 }

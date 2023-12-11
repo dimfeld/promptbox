@@ -1,8 +1,7 @@
-use std::path::Path;
+use std::{borrow::Cow, path::Path};
 
 use clap::ValueEnum;
 use error_stack::{Report, ResultExt};
-use liquid::ValueView;
 use serde::{Deserialize, Serialize};
 use tokenizers::Encoding;
 
@@ -158,10 +157,9 @@ fn truncate_at<'a>(
 
 pub fn enforce_context_limit(
     model_options: &ModelOptions,
-    parser: &liquid::Parser,
     template_path: &Path,
     template: &str,
-    mut template_args: liquid::Object,
+    mut template_args: tera::Context,
     rendered: String,
 ) -> Result<String, Report<Error>> {
     let context_limit = model_options
@@ -201,8 +199,7 @@ pub fn enforce_context_limit(
             &mut template_args,
         )?;
 
-        let prompt =
-            crate::template::render_template(parser, template_path, template, &template_args)?;
+        let prompt = crate::template::render_template(template_path, template, &template_args)?;
 
         Ok(prompt)
     }
@@ -213,7 +210,7 @@ fn trim_context_from_args(
     context_limit: usize,
     current_tokens: usize,
     context_options: &ContextOptions,
-    template_args: &mut liquid::Object,
+    template_args: &mut tera::Context,
 ) -> Result<(), Report<Error>> {
     let mut to_trim = (current_tokens - context_limit) as isize;
 
@@ -222,10 +219,16 @@ fn trim_context_from_args(
             break;
         }
 
-        if let Some(value) = template_args.get_mut(arg.as_str()) {
-            let trimmed_amount =
-                trim_arg(tokenizer, to_trim as usize, context_options, None, value)?;
+        if let Some(mut value) = template_args.remove(arg.as_str()) {
+            let trimmed_amount = trim_arg(
+                tokenizer,
+                to_trim as usize,
+                context_options,
+                None,
+                &mut value,
+            )?;
             to_trim -= trimmed_amount as isize;
+            template_args.insert(arg.to_string(), &value);
         }
     }
 
@@ -237,14 +240,14 @@ fn trim_arg(
     to_trim: usize,
     context_options: &ContextOptions,
     encoded_value: Option<Encoding>,
-    value: &mut liquid::model::Value,
+    value: &mut serde_json::Value,
 ) -> Result<usize, Report<Error>> {
     if to_trim == 0 {
         return Ok(0);
     }
 
     match value {
-        liquid::model::Value::Array(array) => {
+        serde_json::Value::Array(array) => {
             let mut remaining_to_trim = to_trim as isize;
             let mut total_trimmed = 0;
             match context_options.array_priority {
@@ -279,10 +282,7 @@ fn trim_arg(
                 ArrayTrimPriority::Equal => {
                     let encoded = array
                         .iter()
-                        .map(|v| {
-                            let s = v.to_kstr();
-                            tokenizer.encode(s.as_str())
-                        })
+                        .map(|v| tokenizer.encode(value_string(v).as_ref()))
                         .collect::<Result<Vec<_>, _>>()?;
 
                     // Trim an equal percentage from each value.
@@ -305,20 +305,21 @@ fn trim_arg(
                 }
             }
 
-            array.retain(|f| !f.to_kstr().as_str().is_empty());
+            array.retain(|f| !value_string(f).is_empty());
             Ok(total_trimmed)
         }
-        liquid::model::Value::Scalar(s) => {
-            let value = s.to_kstr();
+        serde_json::Value::Null => Ok(0),
+        s => {
+            let value = value_string(s);
             let encoded = encoded_value
                 .map(Ok)
-                .unwrap_or_else(|| tokenizer.encode(value.as_str()))?;
+                .unwrap_or_else(|| tokenizer.encode(value.as_ref()))?;
 
             if encoded.len() > to_trim {
                 let trimmed = truncate_at(
                     encoded.len() - to_trim,
                     context_options.keep,
-                    value.as_str(),
+                    value.as_ref(),
                     &encoded,
                 );
                 let new_str = trimmed.to_string();
@@ -330,7 +331,6 @@ fn trim_arg(
                 Ok(encoded.len())
             }
         }
-        _ => Ok(0),
     }
 }
 
@@ -347,14 +347,12 @@ mod test {
     mod enforce_context_limit {
         use std::path::PathBuf;
 
-        use liquid::{
-            object,
-            partials::{InMemorySource, LazyCompiler},
-        };
+        use serde_json::json;
+        use tera::{Context, Tera};
 
         use super::*;
 
-        fn init_test(limit: usize) -> (ModelOptions, liquid::Object, liquid::Parser, String) {
+        fn init_test(limit: usize) -> (ModelOptions, tera::Context, String) {
             let model_options = ModelOptions {
                 model: "gpt-3.5-turbo".to_string().into(),
                 context: ContextOptions {
@@ -364,24 +362,14 @@ mod test {
                 },
                 ..Default::default()
             };
-
-            let template_context = object!({
+            let context = tera::Context::from_value(json!({
                 "title": "My blog",
                 "extra": "Some blog post with a lot of content to summarize"
-            });
+            }))
+            .unwrap();
+            let initial_render = Tera::one_off(TEST_TEMPLATE, &context, true).unwrap();
 
-            let parser = liquid::ParserBuilder::<LazyCompiler<InMemorySource>>::default()
-                .stdlib()
-                .build()
-                .expect("failed to build parser");
-
-            let initial_render = parser
-                .parse(TEST_TEMPLATE)
-                .unwrap()
-                .render(&template_context)
-                .unwrap();
-
-            (model_options, template_context, parser, initial_render)
+            (model_options, context, initial_render)
         }
 
         const TEST_TEMPLATE: &str = r##"
@@ -394,11 +382,10 @@ mod test {
 
         #[test]
         fn below_limit() {
-            let (options, context, parser, initial_render) = init_test(2048);
+            let (options, context, initial_render) = init_test(2048);
 
             let output = enforce_context_limit(
                 &options,
-                &parser,
                 &PathBuf::from("test"),
                 TEST_TEMPLATE,
                 context,
@@ -411,13 +398,12 @@ mod test {
 
         #[test]
         fn above_limit_with_trim_args() {
-            let (mut options, context, parser, initial_render) = init_test(33);
+            let (mut options, context, initial_render) = init_test(33);
 
             options.context.trim_args = vec!["extra".to_string()];
 
             let output = enforce_context_limit(
                 &options,
-                &parser,
                 &PathBuf::from("test"),
                 TEST_TEMPLATE,
                 context,
@@ -425,28 +411,24 @@ mod test {
             )
             .unwrap();
 
-            let expected_context = object!({
+            let expected_context = Context::from_value(json!({
                 "title": "My blog",
                 "extra": "Some blog post with a lot of"
-            });
+            }))
+            .unwrap();
 
-            let expected_render = parser
-                .parse(TEST_TEMPLATE)
-                .unwrap()
-                .render(&expected_context)
-                .unwrap();
+            let expected_render = Tera::one_off(TEST_TEMPLATE, &expected_context, false).unwrap();
 
             assert_eq!(output, expected_render);
         }
 
         #[test]
         fn above_limit_without_trim_args() {
-            let (mut options, context, parser, initial_render) = init_test(30);
+            let (mut options, context, initial_render) = init_test(30);
             options.context.keep = OverflowKeep::End;
 
             let output = enforce_context_limit(
                 &options,
-                &parser,
                 &PathBuf::from("test"),
                 TEST_TEMPLATE,
                 context,
@@ -487,16 +469,16 @@ mod test {
     }
 
     mod trim_context_from_args {
-        use liquid::object;
+        use serde_json::json;
 
         use super::*;
 
-        fn sum_tokens(tokenizer: &Tokenizer, values: &liquid::model::Value) -> usize {
+        fn sum_tokens(tokenizer: &Tokenizer, values: &serde_json::Value) -> usize {
             let inputs = values
                 .as_array()
                 .unwrap()
-                .values()
-                .map(|v| v.to_kstr().as_str().to_string())
+                .iter()
+                .map(|v| value_string(v))
                 .collect::<Vec<_>>();
 
             tokenizer
@@ -511,12 +493,13 @@ mod test {
         #[test]
         fn trim_scalar_value() {
             let tokenizer = Tokenizer::new().unwrap();
-            let mut args = object!({
+            let mut args = tera::Context::from_value(json!({
                 "another_value": 5,
                 "a_title": "The Wizard of Oz",
                 "test": SAMPLE_TEXT_1,
                 "zoos": "animals"
-            });
+            }))
+            .unwrap();
 
             trim_context_from_args(
                 &tokenizer,
@@ -534,8 +517,8 @@ mod test {
             .unwrap();
 
             assert_eq!(
-                args,
-                object!({
+                args.into_json(),
+                json!({
                     "another_value": 5,
                     "a_title": "The Wizard of Oz",
                     "test": "This is a test texting and it",
@@ -548,16 +531,16 @@ mod test {
         #[test]
         fn trim_array_value_first_multiple_values() {
             let tokenizer = Tokenizer::new().unwrap();
-            let mut args = object!({
+            let mut args = tera::Context::from_value(json!({
                 "test": vec![
                     SAMPLE_TEXT_1,
                     SAMPLE_TEXT_2,
                     SAMPLE_TEXT_3,
                 ],
-            });
+            }))
+            .unwrap();
 
-            let start_tokens = sum_tokens(&tokenizer, &args["test"]);
-            println!("start tokens: {}", start_tokens);
+            sum_tokens(&tokenizer, &args.get("test").unwrap());
 
             trim_context_from_args(
                 &tokenizer,
@@ -574,17 +557,16 @@ mod test {
             )
             .unwrap();
 
+            let total_tokens = sum_tokens(&tokenizer, &args.get("test").unwrap());
             assert_eq!(
-                args,
-                object!({
+                args.into_json(),
+                json!({
                     "test": vec![
                         SAMPLE_TEXT_1,
                         "Another test text",
                     ],
                 })
             );
-
-            let total_tokens = sum_tokens(&tokenizer, &args["test"]);
             assert!(total_tokens == TOTAL_TOKENS - 7);
         }
 
@@ -592,13 +574,14 @@ mod test {
         #[test]
         fn trim_array_value_first_single_value_exact() {
             let tokenizer = Tokenizer::new().unwrap();
-            let mut args = object!({
+            let mut args = tera::Context::from_value(json!({
                 "test": vec![
                     SAMPLE_TEXT_1,
                     SAMPLE_TEXT_2,
                     SAMPLE_TEXT_3,
                 ],
-            });
+            }))
+            .unwrap();
 
             trim_context_from_args(
                 &tokenizer,
@@ -615,9 +598,10 @@ mod test {
             )
             .unwrap();
 
+            let total_tokens = sum_tokens(&tokenizer, &args.get("test").unwrap());
             assert_eq!(
-                args,
-                object!({
+                args.into_json(),
+                json!({
                     "test": vec![
                         SAMPLE_TEXT_1,
                         SAMPLE_TEXT_2,
@@ -625,7 +609,6 @@ mod test {
                 })
             );
 
-            let total_tokens = sum_tokens(&tokenizer, &args["test"]);
             assert!(total_tokens == TOTAL_TOKENS - 5);
         }
 
@@ -633,13 +616,14 @@ mod test {
         #[test]
         fn trim_array_value_first_single_value_partial() {
             let tokenizer = Tokenizer::new().unwrap();
-            let mut args = object!({
+            let mut args = tera::Context::from_value(json!({
                 "test": vec![
                     SAMPLE_TEXT_1,
                     SAMPLE_TEXT_2,
                     SAMPLE_TEXT_3,
                 ],
-            });
+            }))
+            .unwrap();
 
             trim_context_from_args(
                 &tokenizer,
@@ -656,9 +640,10 @@ mod test {
             )
             .unwrap();
 
+            let total_tokens = sum_tokens(&tokenizer, &args.get("test").unwrap());
             assert_eq!(
-                args,
-                object!({
+                args.into_json(),
+                json!({
                     "test": vec![
                         SAMPLE_TEXT_1,
                         SAMPLE_TEXT_2,
@@ -667,7 +652,6 @@ mod test {
                 })
             );
 
-            let total_tokens = sum_tokens(&tokenizer, &args["test"]);
             assert!(total_tokens == TOTAL_TOKENS - 2);
         }
 
@@ -675,13 +659,14 @@ mod test {
         #[test]
         fn trim_array_value_last() {
             let tokenizer = Tokenizer::new().unwrap();
-            let mut args = object!({
+            let mut args = tera::Context::from_value(json!({
                 "test": vec![
                     SAMPLE_TEXT_1,
                     SAMPLE_TEXT_2,
                     SAMPLE_TEXT_3,
                 ],
-            });
+            }))
+            .unwrap();
 
             trim_context_from_args(
                 &tokenizer,
@@ -698,9 +683,10 @@ mod test {
             )
             .unwrap();
 
+            let total_tokens = sum_tokens(&tokenizer, &args.get("test").unwrap());
             assert_eq!(
-                args,
-                object!({
+                args.into_json(),
+                json!({
                     "test": vec![
                         "This is a test texting",
                         SAMPLE_TEXT_2,
@@ -709,20 +695,20 @@ mod test {
                 })
             );
 
-            let total_tokens = sum_tokens(&tokenizer, &args["test"]);
             assert!(total_tokens == TOTAL_TOKENS - 7);
         }
 
         #[test]
         fn trim_array_value_equal() {
             let tokenizer = Tokenizer::new().unwrap();
-            let mut args = object!({
+            let mut args = tera::Context::from_value(json!({
                 "test": vec![
                     SAMPLE_TEXT_1,
                     SAMPLE_TEXT_2,
                     SAMPLE_TEXT_3,
                 ],
-            });
+            }))
+            .unwrap();
 
             trim_context_from_args(
                 &tokenizer,
@@ -739,12 +725,11 @@ mod test {
             )
             .unwrap();
 
-            let total_tokens = sum_tokens(&tokenizer, &args["test"]);
-            assert!(total_tokens == TOTAL_TOKENS - 10);
+            let total_tokens = sum_tokens(&tokenizer, &args.get("test").unwrap());
 
             assert_eq!(
-                args,
-                object!({
+                args.into_json(),
+                json!({
                     "test": vec![
                         "This is a test texting and",
                         "Another test text",
@@ -752,6 +737,14 @@ mod test {
                     ],
                 })
             );
+            assert!(total_tokens == TOTAL_TOKENS - 10);
         }
+    }
+}
+
+fn value_string(value: &serde_json::Value) -> Cow<str> {
+    match value.as_str() {
+        Some(s) => Cow::Borrowed(s),
+        None => Cow::Owned(value.to_string()),
     }
 }
