@@ -11,7 +11,7 @@ and anything compatible with the OpenAI API.
 # Template Files
 
 - are built in TOML
-- can use Liquid templating, and reference templates in other files
+- can use [Tera](https://keats.github.io/tera/docs) templating (similar to Jinja), and reference templates in other files
 - define command-line arguments, which can include references to files
 - have the filename format `<NAME>.pb.toml`
 
@@ -57,14 +57,14 @@ Then to run it:
 > promptbox run summarize --topic software --file README.md
 The README.md file provides an overview of the PromptBox utility, which is used for maintaining libraries of
 LLM prompt templates that can be filled in and submitted from the command line. It explains that template files
-are built in TOML and can use Liquid templating. The file also includes an example template for summarizing files
+are built in TOML and can use Tera templating. The file also includes an example template for summarizing files
 on a specific topic, with options for length, formality, and the files to summarize. Additionally, it mentions the
 presence of configuration files that can set default model options and inherit settings from parent directories.
 
 > promptbox run summarize --topic software --file README.md --style excited 
 Introducing PromptBox, a powerful utility for maintaining libraries of LLM prompt templates! With PromptBox, you can
 easily fill in and submit prompt templates from the command line. These template files, built in TOML, can utilize
-Liquid templating and reference templates in other files. They also define command-line arguments, including references
+Tera templating and reference templates in other files. They also define command-line arguments, including references
 to files. The excitement doesn't stop there! PromptBox even supports configuration files, allowing you to set default
 model options and inherit settings from parent directories. Get ready to revolutionize your software experience
 with PromptBox!
@@ -78,7 +78,7 @@ Promptbox can take additional input from extra command-line arguments or have it
 
 By default, this content is appended to the end of the prompt, but the template can reference it as `{{extra}}`
 to have it placed elsewhere in the prompt, as in this example. 
-```liquid
+```jinja
 Below is a transcript of a video named "{{title}}":
 
 {{extra}}
