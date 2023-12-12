@@ -1,3 +1,7 @@
+## Unreleased
+
+- Switch templating to Tera. Most templates should not require any changes.
+
 ## 0.2.0
 
 - Support Together and OpenRouter.

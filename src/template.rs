@@ -6,6 +6,7 @@ use std::{
 
 use error_stack::{Report, ResultExt};
 use serde::Deserialize;
+use tera::Tera;
 
 use crate::{args::GlobalRunArgs, error::Error, model::ModelOptionsInput};
 
@@ -32,7 +33,7 @@ pub struct PromptOption {
     pub option_type: OptionType,
     /// If this option is omitted, use this default value instead.
     /// Options without a default value and without `optional` are required.
-    pub default: Option<liquid::model::Value>,
+    pub default: Option<serde_json::Value>,
     /// Set `optional` true to allow omitting the option without providing a default value
     #[serde(default)]
     pub optional: bool,
@@ -127,22 +128,13 @@ impl ParsedTemplate {
 }
 
 pub fn render_template(
-    parser: &liquid::Parser,
     template_path: &Path,
     template: &str,
-    context: &liquid::Object,
+    context: &tera::Context,
 ) -> Result<String, Report<Error>> {
-    let parsed = parser
-        .parse(&template)
+    Tera::one_off(template, context, false)
         .change_context(Error::ParseTemplate)
-        .attach_printable_lazy(|| template_path.display().to_string())?;
-
-    let prompt = parsed
-        .render(&context)
-        .change_context(Error::ParseTemplate)
-        .attach_printable_lazy(|| template_path.display().to_string())?;
-
-    Ok(prompt)
+        .attach_printable_lazy(|| template_path.display().to_string())
 }
 
 pub fn template_references_extra(template: &str) -> bool {
@@ -152,7 +144,7 @@ pub fn template_references_extra(template: &str) -> bool {
 
 pub fn assemble_template(
     args: &mut GlobalRunArgs,
-    template_context: &mut liquid::Object,
+    template_context: &mut serde_json::Value,
     initial_template: String,
 ) -> Result<String, Report<Error>> {
     let mut template = match args.prepend.as_ref() {
@@ -175,7 +167,7 @@ pub fn assemble_template(
 
     let extra_content = extra.join("\n\n");
     if template_references_extra(&template) {
-        template_context.insert("extra".into(), liquid::model::Value::scalar(extra_content));
+        template_context["extra"] = extra_content.into();
     } else if !extra_content.is_empty() {
         template = format!("{template}\n\n{extra_content}");
     }

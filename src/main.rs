@@ -5,7 +5,6 @@ use config::Config;
 use error::Error;
 use error_stack::{Report, ResultExt};
 use global_config::load_dotenv;
-use liquid::partials::{InMemorySource, LazyCompiler};
 use model::ModelOptions;
 use template::{assemble_template, render_template, ParsedTemplate};
 
@@ -48,18 +47,14 @@ fn generate_template(
 
     let template = assemble_template(&mut args, &mut template_context, template)?;
 
-    // TODO replace InMemorySource with a custom source that can look for partials in the various
-    // config directories.
-    let parser = liquid::ParserBuilder::<LazyCompiler<InMemorySource>>::default()
-        .stdlib()
-        .build()
-        .expect("failed to build parser");
+    let template_context =
+        tera::Context::from_value(template_context).change_context(Error::PreparePrompt)?;
 
-    let prompt = render_template(&parser, &template_path, &template, &template_context)
+    let prompt = render_template(&template_path, &template, &template_context)
         .attach_printable("Rendering template")
         .attach_printable_lazy(|| template_path.display().to_string())?;
     let system_prompt = if let Some((system_path, system_template)) = system {
-        render_template(&parser, &system_path, &system_template, &template_context)
+        render_template(&system_path, &system_template, &template_context)
             .attach_printable("Rendering system template")
             .attach_printable_lazy(|| system_path.display().to_string())?
     } else {
@@ -68,7 +63,6 @@ fn generate_template(
 
     let prompt = context::enforce_context_limit(
         &model_options,
-        &parser,
         &template_path,
         &template,
         template_context,
