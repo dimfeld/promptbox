@@ -1,4 +1,4 @@
-## Unreleased
+## 0.3.0
 
 - Switch templating to Tera. Most templates should not require any changes.
 - Add image arguments for multimodal models
