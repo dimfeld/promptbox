@@ -4,7 +4,7 @@ use error_stack::{Report, ResultExt};
 use serde::{Deserialize, Serialize};
 use tracing::{event, instrument, Level};
 
-use super::ModelHost;
+use super::{ModelHost, ModelInput};
 use crate::{
     cache::Cache,
     chat_template::{apply_chat_template, builtin_chat_template, ChatTemplate},
@@ -150,16 +150,19 @@ impl ModelHost for TogetherHost {
     fn send_model_request(
         &self,
         options: &ModelOptions,
-        prompt: &str,
-        system: Option<&str>,
+        input: ModelInput,
         message_tx: flume::Sender<String>,
     ) -> Result<(), Report<ModelError>> {
+        if !input.images.is_empty() {
+            return Err(Report::new(ModelError::HostDoesNotSupportImages));
+        }
+
         let full_spec = options.full_model_spec();
         let model_name = full_spec.model_name();
         let model_info = self.get_model_info(model_name)?;
 
         let prompt = self
-            .format_prompt(&model_info.config, prompt, system)
+            .format_prompt(&model_info.config, input.prompt, input.system)
             .change_context(ModelError::FormatPrompt)?;
 
         let mut stop = options.stop.clone();

@@ -693,6 +693,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "imageinfo"
+version = "0.7.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f81ae3ed14e98cdfeab1c489e6409074a5ac8811ba3ad43e007c02bae607ef1"
+dependencies = [
+ "regex",
+ "serde",
+]
+
+[[package]]
 name = "indexmap"
 version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1160,12 +1170,14 @@ dependencies = [
 name = "promptbox"
 version = "0.2.0"
 dependencies = [
+ "base64 0.21.5",
  "clap",
  "dirs",
  "dotenvy",
  "error-stack",
  "fastrand",
  "flume",
+ "imageinfo",
  "itertools",
  "minijinja",
  "regex",

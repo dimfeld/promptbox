@@ -11,6 +11,7 @@ use error_stack::{Report, ResultExt};
 use crate::{
     context::OverflowKeep,
     error::Error,
+    image::ImageData,
     model::OutputFormat,
     template::{OptionType, PromptOption, PromptTemplate},
 };
@@ -136,18 +137,15 @@ pub fn parse_template_args(
     cmdline: Vec<OsString>,
     base_dir: &Path,
     template: &PromptTemplate,
-) -> Result<(GlobalRunArgs, serde_json::Value), Report<Error>> {
+) -> Result<(GlobalRunArgs, serde_json::Value, Vec<ImageData>), Report<Error>> {
     let args = template
         .options
         .iter()
         .map(|(name, option)| {
             let action = match (option.array, option.option_type) {
                 (true, _) => ArgAction::Append,
-                (false, OptionType::String) => ArgAction::Set,
-                (false, OptionType::Number) => ArgAction::Set,
-                (false, OptionType::Integer) => ArgAction::Set,
-                (false, OptionType::File) => ArgAction::Set,
                 (false, OptionType::Bool) => ArgAction::SetTrue,
+                (false, _) => ArgAction::Set,
             };
 
             let arg = Arg::new(name.to_string())
@@ -168,6 +166,7 @@ pub fn parse_template_args(
                 OptionType::Integer => arg.value_parser(clap::value_parser!(i64)),
                 OptionType::Bool => arg.value_parser(clap::value_parser!(bool)),
                 OptionType::File => arg.value_parser(clap::value_parser!(PathBuf)),
+                OptionType::Image => arg.value_parser(clap::value_parser!(PathBuf)),
             };
 
             Ok(arg)
@@ -190,6 +189,7 @@ pub fn parse_template_args(
         .ok_or(Error::ArgParseFailure)?;
 
     let mut context = serde_json::json!({});
+    let mut images = vec![];
     for (name, option) in &template.options {
         match option.option_type {
             OptionType::Bool => add_val_to_context::<bool>(&mut context, &mut parsed, name, option),
@@ -202,15 +202,35 @@ pub fn parse_template_args(
             OptionType::String => {
                 add_val_to_context::<String>(&mut context, &mut parsed, name, option)
             }
-            OptionType::File => {
+            OptionType::Image => {
                 if option.array {
                     let vals = parsed.remove_many::<PathBuf>(&name).unwrap_or_default();
-                    let values = vals
+                    for val in vals {
+                        let val =
+                            read_image(base_dir, &val).change_context(Error::ArgParseFailure)?;
+                        images.push(val);
+                    }
+                } else {
+                    let val = parsed
+                        .remove_one::<PathBuf>(name)
+                        .map(|path| read_image(base_dir, &path))
+                        .transpose()
+                        .change_context(Error::ArgParseFailure)?;
+                    if let Some(val) = val {
+                        images.push(val);
+                    }
+                }
+            }
+            OptionType::File => {
+                if option.array {
+                    let vals = parsed
+                        .remove_many::<PathBuf>(&name)
+                        .unwrap_or_default()
                         .into_iter()
                         .map(|path| create_file_object(base_dir, &path))
                         .collect::<Result<Vec<_>, _>>()
                         .change_context(Error::ArgParseFailure)?;
-                    context[name] = serde_json::Value::Array(values);
+                    context[name] = serde_json::Value::Array(vals);
                 } else {
                     let val = parsed
                         .remove_one::<PathBuf>(name)
@@ -226,7 +246,16 @@ pub fn parse_template_args(
     let global_args =
         GlobalRunArgs::from_arg_matches_mut(&mut parsed).change_context(Error::ArgParseFailure)?;
 
-    Ok((global_args, context))
+    Ok((global_args, context, images))
+}
+
+fn read_image(base_dir: &Path, path: &Path) -> Result<ImageData, Report<Error>> {
+    let path = base_dir
+        .join(path)
+        .canonicalize()
+        .change_context(Error::Io)
+        .attach_printable_lazy(|| path.display().to_string())?;
+    ImageData::new(&path).attach_printable_lazy(|| path.display().to_string())
 }
 
 fn create_file_object(

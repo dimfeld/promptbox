@@ -6,7 +6,7 @@ use serde_json::json;
 use tracing::{event, instrument, Level};
 use ureq::Response;
 
-use super::ModelHost;
+use super::{ModelHost, ModelInput};
 use crate::model::{map_model_response_err, ModelError, ModelOptions, OutputFormat};
 
 pub const DEFAULT_HOST: &str = "http://localhost:11434";
@@ -34,8 +34,7 @@ impl ModelHost for OllamaHost {
     fn send_model_request(
         &self,
         options: &ModelOptions,
-        prompt: &str,
-        system: Option<&str>,
+        input: ModelInput,
         message_tx: flume::Sender<String>,
     ) -> Result<(), Report<ModelError>> {
         let url = format!("{}/api/generate", self.host());
@@ -47,11 +46,18 @@ impl ModelHost for OllamaHost {
             request
         };
 
+        let images = input
+            .images
+            .iter()
+            .map(|i| i.as_base64())
+            .collect::<Vec<_>>();
+
         let spec = options.full_model_spec();
         let body = OllamaRequest {
             model: &spec.model_name(),
-            prompt,
-            system,
+            prompt: input.prompt,
+            system: input.system,
+            images,
             format: options.format,
             options: OllamaModelOptions {
                 temperature: options.temperature,
@@ -116,6 +122,8 @@ impl ModelHost for OllamaHost {
 pub struct OllamaRequest<'a> {
     pub model: &'a str,
     pub prompt: &'a str,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<String>,
     pub system: Option<&'a str>,
     pub format: Option<OutputFormat>,
     pub stream: bool,

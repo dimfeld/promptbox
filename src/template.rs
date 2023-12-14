@@ -21,6 +21,7 @@ pub enum OptionType {
     #[serde(alias = "boolean")]
     Bool,
     File,
+    Image,
 }
 
 #[derive(Deserialize, Debug)]
@@ -228,7 +229,7 @@ mod tests {
             "optvalue",
         ]);
 
-        let (_args, _options, prompt, system) =
+        let (_args, _options, prompt, system, _) =
             generate_template(PathBuf::from(BASE_DIR), "normal".to_string(), cmdline)
                 .expect("generate_template");
         assert!(system.is_empty());
@@ -264,7 +265,7 @@ optvalue
     fn in_parent_dir() {
         let cmdline = to_cmdline_vec(vec!["test", "run", "simple"]);
 
-        let (_, _, prompt, _) =
+        let (_, _, prompt, _, _) =
             generate_template(base_dir("config_in_subdir"), "simple".to_string(), cmdline)
                 .expect("generate_template");
 
@@ -275,7 +276,7 @@ optvalue
     fn override_template() {
         let cmdline = to_cmdline_vec(vec!["test", "run", "tmp"]);
 
-        let (_, _, prompt, _) = generate_template(
+        let (_, _, prompt, _, _) = generate_template(
             base_dir("override_template/override"),
             "tmp".to_string(),
             cmdline,
@@ -289,7 +290,7 @@ optvalue
     fn template_at_path() {
         let cmdline = to_cmdline_vec(vec!["test", "run", "subdir_without_config/indir"]);
 
-        let (_, _, prompt, _) = generate_template(
+        let (_, _, prompt, _, _) = generate_template(
             PathBuf::from(BASE_DIR),
             "subdir_without_config/indir".to_string(),
             cmdline,
@@ -401,7 +402,7 @@ optvalue
             "5",
         ]);
 
-        let (_, model_options, _, _) = generate_template(
+        let (_, model_options, _, _, _) = generate_template(
             base_dir("all_model_options"),
             "all_model_options".to_string(),
             cmdline,
@@ -421,7 +422,7 @@ optvalue
     #[test]
     fn system_prompt() {
         let cmdline = to_cmdline_vec(vec!["test", "run", "system_prompt", "--type", "fruit"]);
-        let (_, _, _, system_prompt) = generate_template(
+        let (_, _, _, system_prompt, _) = generate_template(
             PathBuf::from(BASE_DIR),
             "system_prompt".to_string(),
             cmdline,
@@ -440,7 +441,7 @@ optvalue
             "--type",
             "fruit",
         ]);
-        let (_, _, _, system_prompt) = generate_template(
+        let (_, _, _, system_prompt, _) = generate_template(
             PathBuf::from(BASE_DIR),
             "system_prompt_in_file".to_string(),
             cmdline,
@@ -465,7 +466,7 @@ optvalue
                 "Do it best",
             ]);
 
-            let (_, _, prompt, _) =
+            let (_, _, prompt, _, _) =
                 generate_template(PathBuf::from(BASE_DIR), "simple".to_string(), cmdline)
                     .expect("generate_template");
             assert_eq!(
@@ -486,7 +487,7 @@ optvalue
                 "Do it best",
             ]);
 
-            let (_, _, prompt, _) =
+            let (_, _, prompt, _, _) =
                 generate_template(PathBuf::from(BASE_DIR), "simple".to_string(), cmdline)
                     .expect("generate_template");
             assert_eq!(
@@ -509,7 +510,7 @@ optvalue
                 "Do it best",
             ]);
 
-            let (_, _, prompt, _) =
+            let (_, _, prompt, _, _) =
                 generate_template(PathBuf::from(BASE_DIR), "simple".to_string(), cmdline)
                     .expect("generate_template");
             assert_eq!(
@@ -532,7 +533,7 @@ optvalue
                 "Do it best",
             ]);
 
-            let (_, _, prompt, _) = generate_template(
+            let (_, _, prompt, _, _) = generate_template(
                 PathBuf::from(BASE_DIR),
                 "extra_template_arg".to_string(),
                 cmdline,
@@ -546,6 +547,8 @@ optvalue
     }
 
     mod args {
+        use base64::Engine;
+
         use super::*;
 
         #[test]
@@ -568,7 +571,7 @@ optvalue
                 "test1.txt",
             ]);
 
-            let (_, _, prompt, _) =
+            let (_, _, prompt, _, _) =
                 generate_template(PathBuf::from(BASE_DIR), "normal".to_string(), cmdline)
                     .expect("generate_template");
             assert_eq!(
@@ -737,6 +740,50 @@ test1.txt: test1
                 err.current_context(),
                 Error::CmdlineParseFailure(_)
             ));
+        }
+
+        #[test]
+        fn image_args() {
+            let cmdline = to_cmdline_vec(vec![
+                "test",
+                "run",
+                "images",
+                "--image",
+                "tsunami.png",
+                "--image",
+                "test.jpg",
+            ]);
+
+            let (_, _, _, _, images) =
+                generate_template(BASE_DIR.into(), "images".to_string(), cmdline).unwrap();
+
+            assert_eq!(images.len(), 2);
+            assert_eq!(images[0].mimetype, "image/png");
+            assert_eq!(images[1].mimetype, "image/jpeg");
+
+            let raw_data = std::fs::read(base_dir("tsunami.png")).unwrap();
+            let expected_b64 = base64::engine::general_purpose::STANDARD.encode(&raw_data);
+            assert_eq!(images[0].as_base64(), expected_b64);
+            assert_eq!(
+                images[0].as_data_url(),
+                format!("data:image/png;base64,{}", expected_b64)
+            );
+        }
+
+        #[test]
+        fn image_missing() {
+            let cmdline = to_cmdline_vec(vec![
+                "test",
+                "run",
+                "images",
+                "--image",
+                "tsunami.png",
+                "--image",
+                "doesntexist.jpg",
+            ]);
+
+            let result = generate_template(BASE_DIR.into(), "images".to_string(), cmdline);
+            let _ = result.expect_err("should have been an error");
         }
     }
 
