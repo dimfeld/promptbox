@@ -1,0 +1,7 @@
+template = 'What is in these images?'
+
+[model]
+model = "bakllava"
+
+[options]
+image = { type = "image", array = true }

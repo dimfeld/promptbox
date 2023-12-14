@@ -49,7 +49,11 @@ len = { type = "int", description = "The length of the summary", default = 4 }
 topic = { type = "string", description = "The topic of the summary" }
 style = { type = "string", default = "concise" }
 file = { type = "file", array = true, description = "The files to summarize" }
+# For multimodal models
+image = { type = "image", array = true, description = "The images to summarize" }
 ```
+
+Image arguments for multimodal models will be automatically added to the request, and do not have to be referenced in the prompt template.
 
 Then to run it:
 

@@ -5,6 +5,7 @@ use serde::Deserialize;
 
 use crate::{
     error::Error,
+    image::ImageData,
     model::{ModelError, ModelOptions},
     option::{overwrite_from_option, overwrite_option_from_option},
 };
@@ -13,12 +14,18 @@ pub mod ollama;
 pub mod openai;
 mod together;
 
+#[derive(Debug)]
+pub struct ModelInput<'a> {
+    pub prompt: &'a str,
+    pub system: Option<&'a str>,
+    pub images: Vec<ImageData>,
+}
+
 pub trait ModelHost: std::fmt::Debug {
     fn send_model_request(
         &self,
         options: &ModelOptions,
-        prompt: &str,
-        system: Option<&str>,
+        input: ModelInput,
         message_tx: flume::Sender<String>,
     ) -> Result<(), Report<ModelError>>;
 

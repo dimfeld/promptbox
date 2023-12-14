@@ -5,6 +5,8 @@ use config::Config;
 use error::Error;
 use error_stack::{Report, ResultExt};
 use global_config::load_dotenv;
+use hosts::ModelInput;
+use image::ImageData;
 use model::ModelOptions;
 use template::{assemble_template, render_template, ParsedTemplate};
 
@@ -16,6 +18,7 @@ mod context;
 mod error;
 mod global_config;
 mod hosts;
+mod image;
 mod model;
 mod option;
 mod requests;
@@ -28,7 +31,7 @@ fn generate_template(
     base_dir: PathBuf,
     template: String,
     cmdline: Vec<OsString>,
-) -> Result<(GlobalRunArgs, ModelOptions, String, String), Report<Error>> {
+) -> Result<(GlobalRunArgs, ModelOptions, String, String, Vec<ImageData>), Report<Error>> {
     let config = Config::from_directory(base_dir.clone())?;
 
     let ParsedTemplate {
@@ -39,7 +42,7 @@ fn generate_template(
         ..
     } = config.find_template(&template)?;
 
-    let (mut args, mut template_context) = parse_template_args(cmdline, &base_dir, &input)?;
+    let (mut args, mut template_context, images) = parse_template_args(cmdline, &base_dir, &input)?;
 
     let mut model_options = config.model;
     model_options.update_from_model_input(&input.model);
@@ -69,7 +72,7 @@ fn generate_template(
         prompt,
     )?;
 
-    Ok((args, model_options, prompt, system_prompt))
+    Ok((args, model_options, prompt, system_prompt, images))
 }
 
 fn run_template(
@@ -78,7 +81,8 @@ fn run_template(
     args: Vec<OsString>,
     mut output: impl std::io::Write + Send + 'static,
 ) -> Result<(), Report<Error>> {
-    let (args, model_options, prompt, system) = generate_template(base_dir, template, args)?;
+    let (args, model_options, prompt, system, images) =
+        generate_template(base_dir, template, args)?;
 
     if args.verbose {
         eprintln!("{model_options:?}");
@@ -113,7 +117,13 @@ fn run_template(
     };
 
     let host = model_options.api_host()?;
-    host.send_model_request(&model_options, &prompt, system.as_deref(), message_tx)
+    let input = ModelInput {
+        prompt: &prompt,
+        system: system.as_deref(),
+        images,
+    };
+
+    host.send_model_request(&model_options, input, message_tx)
         .change_context(Error::RunPrompt)?;
 
     print_thread.join().unwrap().ok();

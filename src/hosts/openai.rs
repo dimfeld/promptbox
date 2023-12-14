@@ -4,7 +4,7 @@ use error_stack::{Report, ResultExt};
 use serde::Deserialize;
 use serde_json::json;
 
-use super::ModelHost;
+use super::{ModelHost, ModelInput};
 use crate::{
     model::{map_model_response_err, ModelError, ModelOptions},
     requests::request_with_retry,
@@ -50,11 +50,30 @@ impl ModelHost for OpenAiHost {
     fn send_model_request(
         &self,
         options: &ModelOptions,
-        prompt: &str,
-        system: Option<&str>,
+        input: ModelInput,
         message_tx: flume::Sender<String>,
     ) -> Result<(), Report<ModelError>> {
-        let messages = if let Some(system) = system {
+        let user_content = if input.images.is_empty() {
+            json!(input.prompt)
+        } else {
+            let mut messages = vec![json!({
+                "type": "text",
+                "text": input.prompt
+            })];
+
+            for image in &input.images {
+                messages.push(json!({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": image.as_data_url()
+                    }
+                }));
+            }
+
+            json!(messages)
+        };
+
+        let messages = if let Some(system) = input.system {
             json!([
                 {
                     "role": "system",
@@ -62,14 +81,14 @@ impl ModelHost for OpenAiHost {
                 },
                 {
                     "role": "user",
-                    "content": prompt,
+                    "content": user_content,
                 }
             ])
         } else {
             json!([
                 {
                     "role": "user",
-                    "content": prompt,
+                    "content": user_content,
                 }
             ])
         };

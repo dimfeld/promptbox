@@ -326,6 +326,8 @@ pub enum ModelError {
     ModelNotFound(String),
     #[error("Unable to format prompt")]
     FormatPrompt,
+    #[error("Host does not support images")]
+    HostDoesNotSupportImages,
 }
 
 pub fn map_model_response_err(err: ureq::Error) -> Report<ModelError> {

@@ -13,12 +13,14 @@ categories = ["command-line-utilities", "template-engine"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+base64 = "0.21.5"
 clap = { version = "4.4.7", features = ["derive", "env", "string"] }
 dirs = "5.0.1"
 dotenvy = "0.15.7"
 error-stack = "0.4.1"
 fastrand = "2.0.1"
 flume = "0.11.0"
+imageinfo = "0.7.10"
 itertools = "0.11.0"
 minijinja = "1.0.10"
 regex = "1.10.2"
