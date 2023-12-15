@@ -6,12 +6,12 @@
 <#
 .SYNOPSIS
 
-The installer for promptbox 0.3.0
+The installer for promptbox 0.3.1
 
 .DESCRIPTION
 
 This script detects what platform you're on and fetches an appropriate archive from
-https://github.com/dimfeld/promptbox/releases/download/v0.3.0
+https://github.com/dimfeld/promptbox/releases/download/v0.3.1
 then unpacks the binaries and installs them to $env:CARGO_HOME\bin ($HOME\.cargo\bin)
 
 It will then add that dir to PATH by editing your Environment.Path registry key
@@ -29,7 +29,7 @@ Print help
 
 param (
     [Parameter(HelpMessage = "The URL of the directory where artifacts can be fetched from")]
-    [string]$ArtifactDownloadUrl = 'https://github.com/dimfeld/promptbox/releases/download/v0.3.0',
+    [string]$ArtifactDownloadUrl = 'https://github.com/dimfeld/promptbox/releases/download/v0.3.1',
     [Parameter(HelpMessage = "Don't add the install directory to PATH")]
     [switch]$NoModifyPath,
     [Parameter(HelpMessage = "Print Help")]
@@ -37,7 +37,7 @@ param (
 )
 
 $app_name = 'promptbox'
-$app_version = '0.3.0'
+$app_version = '0.3.1'
 
 function Install-Binary($install_args) {
   if ($Help) {
