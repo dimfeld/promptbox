@@ -1,3 +1,7 @@
+## 0.3.1
+
+- Add AnyScale, DeepInfra, and Fireworks to built-in hosts list
+
 ## 0.3.0
 
 - Switch templating to Tera. Most templates should not require any changes.
