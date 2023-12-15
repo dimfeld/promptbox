@@ -10,7 +10,7 @@ use crate::{
     requests::request_with_retry,
 };
 
-pub const OPENAI_HOST: &str = "https://api.openai.com";
+pub const OPENAI_HOST: &str = "https://api.openai.com/v1";
 
 #[derive(Debug)]
 pub struct OpenAiHost {
@@ -19,14 +19,21 @@ pub struct OpenAiHost {
     /// Whether or not to check and enforce a context length limit. Usually this is true, but some
     /// hosts don't provide context length limit information or otherwise manage it themselves.
     pub do_context_limit: bool,
+    pub send_user: bool,
 }
 
 impl OpenAiHost {
-    pub fn new(host: Option<String>, api_key: Option<String>, do_context_limit: bool) -> Self {
+    pub fn new(
+        host: Option<String>,
+        api_key: Option<String>,
+        do_context_limit: bool,
+        send_user: bool,
+    ) -> Self {
         Self {
             api_key,
             host,
             do_context_limit,
+            send_user,
         }
     }
 
@@ -96,9 +103,12 @@ impl ModelHost for OpenAiHost {
         let mut body = json!({
             "model": options.full_model_spec().model_name(),
             "temperature": options.temperature,
-            "user": "promptbox",
             "messages": messages
         });
+
+        if self.send_user {
+            body["user"] = json!("promptbox");
+        }
 
         if let Some(val) = options.format.as_ref() {
             body["format"] = json!(val);
@@ -125,7 +135,7 @@ impl ModelHost for OpenAiHost {
         }
 
         let mut response: ChatCompletion = request_with_retry(
-            self.create_base_request("v1/chat/completions")
+            self.create_base_request("chat/completions")
                 .timeout(Duration::from_secs(30)),
             body,
         )
@@ -188,7 +198,7 @@ fn send_completion_request(options: &ModelOptions, prompt: &str) -> Result<(), u
     //     "prompt": prompt
     // });
 
-    // let response: serde_json::Value = create_base_request(&options, "v1/completions")
+    // let response: serde_json::Value = create_base_request(&options, "completions")
     //     .send_json(body)?
     //     .into_json()?;
 }

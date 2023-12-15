@@ -62,6 +62,10 @@ pub struct HostDefinition {
     pub limit_context_length: bool,
     /// The environment variable that holds the authentication token for this host
     pub api_key: Option<String>,
+    /// If true, send "promptbox" in the `user` field of the request. Some hosts
+    /// reject the request if this field exists, so it can be disabled by setting this
+    /// to false.
+    pub send_app_id: bool,
 }
 
 impl HostDefinition {
@@ -78,6 +82,7 @@ impl HostDefinition {
                 Some(endpoint),
                 key,
                 self.limit_context_length,
+                self.send_app_id,
             )),
             HostProtocol::Together => Box::new(together::TogetherHost::new(endpoint, key)),
         }
@@ -98,12 +103,43 @@ impl HostDefinition {
     pub fn builtin() -> HashMap<String, HostDefinition> {
         [
             (
+                "anyscale".to_string(),
+                HostDefinition {
+                    endpoint: "https://api.endpoints.anyscale.com/v1".to_string(),
+                    protocol: HostProtocol::OpenAi,
+                    limit_context_length: false,
+                    api_key: Some("ANYSCALE_API_KEY".to_string()),
+                    send_app_id: true,
+                },
+            ),
+            (
+                "deepinfra".to_string(),
+                HostDefinition {
+                    endpoint: "https://api.deepinfra.com/v1/openai".to_string(),
+                    protocol: HostProtocol::OpenAi,
+                    limit_context_length: false,
+                    api_key: Some("DEEPINFRA_API_KEY".to_string()),
+                    send_app_id: true,
+                },
+            ),
+            (
+                "fireworks".to_string(),
+                HostDefinition {
+                    endpoint: "https://api.fireworks.ai/inference/v1".to_string(),
+                    protocol: HostProtocol::OpenAi,
+                    limit_context_length: false,
+                    api_key: Some("FIREWORKS_API_KEY".to_string()),
+                    send_app_id: false,
+                },
+            ),
+            (
                 "lm-studio".to_string(),
                 HostDefinition {
                     endpoint: "http://localhost:1234".to_string(),
                     protocol: HostProtocol::OpenAi,
                     limit_context_length: false,
                     api_key: None,
+                    send_app_id: true,
                 },
             ),
             (
@@ -113,6 +149,7 @@ impl HostDefinition {
                     protocol: HostProtocol::Ollama,
                     limit_context_length: true,
                     api_key: None,
+                    send_app_id: true,
                 },
             ),
             (
@@ -122,6 +159,7 @@ impl HostDefinition {
                     protocol: HostProtocol::OpenAi,
                     limit_context_length: true,
                     api_key: Some("OPENAI_API_KEY".to_string()),
+                    send_app_id: true,
                 },
             ),
             (
@@ -131,6 +169,7 @@ impl HostDefinition {
                     protocol: HostProtocol::OpenAi,
                     limit_context_length: false,
                     api_key: Some("OPENROUTER_API_KEY".to_string()),
+                    send_app_id: true,
                 },
             ),
             (
@@ -140,6 +179,7 @@ impl HostDefinition {
                     protocol: HostProtocol::Together,
                     limit_context_length: true,
                     api_key: Some("TOGETHER_API_KEY".to_string()),
+                    send_app_id: true,
                 },
             ),
         ]
@@ -163,6 +203,7 @@ impl TryFrom<HostDefinitionInput> for HostDefinition {
                 .unwrap_or_else(|| protocol.default_context_length_option()),
             protocol,
             api_key: value.api_key,
+            send_app_id: value.send_app_id.unwrap_or(true),
         })
     }
 }
@@ -173,6 +214,7 @@ pub struct HostDefinitionInput {
     pub api_key: Option<String>,
     pub protocol: Option<HostProtocol>,
     pub limit_context_length: Option<bool>,
+    pub send_app_id: Option<bool>,
 }
 
 impl HostDefinitionInput {
@@ -180,7 +222,8 @@ impl HostDefinitionInput {
         overwrite_option_from_option(&mut self.endpoint, &other.endpoint);
         overwrite_option_from_option(&mut self.protocol, &other.protocol);
         overwrite_option_from_option(&mut self.api_key, &other.api_key);
-        overwrite_option_from_option(&mut self.limit_context_length, &other.limit_context_length)
+        overwrite_option_from_option(&mut self.limit_context_length, &other.limit_context_length);
+        overwrite_option_from_option(&mut self.send_app_id, &other.send_app_id);
     }
 }
 

@@ -208,7 +208,8 @@ file:
 ```toml
 [host.my_custom_host]
 # The base URL to use for the API.
-endpoint = "https://super-fast-llm.example.com/api"
+# For OpenAI, `chat/completions` will be added automatically.
+endpoint = "https://super-fast-llm.example.com/api/v1"
 
 # protocol can be openai, ollama, or together
 protocol = "openai"
