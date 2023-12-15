@@ -1,0 +1,7 @@
+template = 'What are the dominant colors in this image?'
+
+[model]
+model = "bakllava"
+
+[options]
+image = { type = "image" }
