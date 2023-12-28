@@ -1,4 +1,9 @@
 {
-  "styles": {
+  "marketing": {
+    "analytics": {
+      "plausible": {
+        "domain": "promptbox.imfeld.dev"
+      }
+    }
   }
 }
