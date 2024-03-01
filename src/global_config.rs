@@ -1,18 +1,16 @@
 use std::path::PathBuf;
 
+use etcetera::BaseStrategy;
 use itertools::Itertools;
 
 pub fn global_config_dirs() -> Vec<PathBuf> {
-    vec![
-        dirs::config_dir(),
-        dirs::home_dir().map(|p| p.join(".config")),
-    ]
-    .into_iter()
-    .flatten()
-    .unique()
-    .map(|p| p.join("promptbox"))
-    .filter(|p| p.is_dir())
-    .collect::<Vec<_>>()
+    let etc = etcetera::base_strategy::choose_native_strategy().unwrap();
+    vec![etc.config_dir(), etc.home_dir().join(".config")]
+        .into_iter()
+        .unique()
+        .map(|p| p.join("promptbox"))
+        .filter(|p| p.is_dir())
+        .collect::<Vec<_>>()
 }
 
 pub fn load_dotenv() {

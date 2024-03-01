@@ -15,9 +15,9 @@ categories = ["command-line-utilities", "template-engine"]
 [dependencies]
 base64 = "0.21.5"
 clap = { version = "4.4.7", features = ["derive", "env", "string"] }
-dirs = "5.0.1"
 dotenvy = "0.15.7"
 error-stack = "0.4.1"
+etcetera = "0.8.0"
 fastrand = "2.0.1"
 flume = "0.11.0"
 imageinfo = "0.7.10"

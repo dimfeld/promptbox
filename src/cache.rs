@@ -1,6 +1,7 @@
 use std::{path::PathBuf, time::Duration};
 
 use error_stack::{Report, ResultExt};
+use etcetera::BaseStrategy;
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::error::Error;
@@ -12,10 +13,8 @@ pub struct Cache {
 
 impl Cache {
     pub fn new() -> Result<Self, Report<Error>> {
-        let dir = dirs::cache_dir()
-            .ok_or(Error::Cache)
-            .attach_printable("platform has no cache directory")?
-            .join("promptbox");
+        let etc = etcetera::base_strategy::choose_native_strategy().unwrap();
+        let dir = etc.cache_dir().join("promptbox");
 
         std::fs::create_dir_all(&dir)
             .change_context(Error::Cache)
